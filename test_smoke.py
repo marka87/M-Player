@@ -51,17 +51,24 @@ def run() -> None:
         assert 'size_bytes' in stats
         assert 'playlists' in stats
 
-        # Test delete_track
+        # Test delete_track (both tiers: keep file vs delete file)
         dummy_file = root / 'dummy.mp3'
         dummy_file.write_text('dummy audio data')
         dummy_track = TrackMetadata('Dummy', 'ArtistX', 'AlbumY')
         database.upsert(dummy_track, dummy_file, duration=120, bitrate=320)
         assert dummy_file.exists()
         d_row = database.tracks('Dummy')[0]
-        del_res = database.delete_track(d_row['id'])
+        # Tier 1: Library only (keep file)
+        del_res = database.delete_track(d_row['id'], delete_file=False)
         assert del_res is True
-        assert not dummy_file.exists()
+        assert dummy_file.exists()
         assert len(database.tracks('Dummy')) == 0
+        # Tier 2: Delete from disk
+        database.upsert(dummy_track, dummy_file, duration=120, bitrate=320)
+        d_row2 = database.tracks('Dummy')[0]
+        del_res2 = database.delete_track(d_row2['id'], delete_file=True)
+        assert del_res2 is True
+        assert not dummy_file.exists()
 
         # Test sync_library cleanup (removing missing files)
         database.upsert(dummy_track, root / 'nonexistent.mp3')

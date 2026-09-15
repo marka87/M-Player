@@ -34,7 +34,7 @@ class MusicDatabase:
                 added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )""")
             existing = {row[1] for row in conn.execute("PRAGMA table_info(tracks)")}
-            for name, definition in {"duration": "REAL NOT NULL DEFAULT 0", "bitrate": "INTEGER NOT NULL DEFAULT 0", "favorite": "INTEGER NOT NULL DEFAULT 0", "collection": "TEXT NOT NULL DEFAULT ''"}.items():
+            for name, definition in {"duration": "REAL NOT NULL DEFAULT 0", "bitrate": "INTEGER NOT NULL DEFAULT 0", "favorite": "INTEGER NOT NULL DEFAULT 0", "collection": "TEXT NOT NULL DEFAULT ''", "play_count": "INTEGER NOT NULL DEFAULT 0"}.items():
                 if name not in existing:
                     conn.execute(f"ALTER TABLE tracks ADD COLUMN {name} {definition}")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tracks_artist ON tracks(artist)")
@@ -53,6 +53,10 @@ class MusicDatabase:
                 speed TEXT NOT NULL DEFAULT '', eta TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )""")
+            existing_dl = {row[1] for row in conn.execute("PRAGMA table_info(downloads)")}
+            if "playlist" not in existing_dl:
+                conn.execute("ALTER TABLE downloads ADD COLUMN playlist TEXT NOT NULL DEFAULT ''")
+
             conn.execute("""CREATE TABLE IF NOT EXISTS favorites (
                 id INTEGER PRIMARY KEY, track_id INTEGER NOT NULL UNIQUE,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -68,16 +72,39 @@ class MusicDatabase:
                 track_number=excluded.track_number, genre=excluded.genre, source_url=excluded.source_url,
                 duration=excluded.duration, bitrate=excluded.bitrate, collection=excluded.collection""", values)
 
-    def tracks(self, query: str = "", favorites: bool = False) -> list[sqlite3.Row]:
+    def increment_play_count(self, track_id: int) -> None:
+        with self._connection() as conn:
+            conn.execute("UPDATE tracks SET play_count = play_count + 1 WHERE id = ?", (track_id,))
+
+    def tracks(self, query: str = "", favorites: bool = False, filter_chip: str = "Alle") -> list[sqlite3.Row]:
         where, values = [], []
+        order_by = "ORDER BY artist COLLATE NOCASE, album COLLATE NOCASE, track_number, title COLLATE NOCASE"
+
         if query:
             where.append("(title LIKE ? OR artist LIKE ? OR album LIKE ? OR genre LIKE ? OR collection LIKE ?)")
             values.extend([f"%{query}%"] * 5)
-        if favorites:
+
+        if favorites or filter_chip == "Favoriten":
             where.append("favorite = 1")
+        elif filter_chip == "Zuletzt hinzugefügt":
+            order_by = "ORDER BY added_at DESC, id DESC"
+        elif filter_chip == "Nicht gehört":
+            where.append("play_count = 0")
+        elif filter_chip == "Playlists":
+            where.append("collection != ''")
+        elif filter_chip.startswith("Künstler:"):
+            where.append("artist = ?")
+            values.append(filter_chip.split(":", 1)[1].strip())
+        elif filter_chip.startswith("Jahr:"):
+            where.append("year = ?")
+            values.append(filter_chip.split(":", 1)[1].strip())
+        elif filter_chip.startswith("Genre:"):
+            where.append("genre = ?")
+            values.append(filter_chip.split(":", 1)[1].strip())
+
         clause = " WHERE " + " AND ".join(where) if where else ""
         with self._connection() as conn:
-            return conn.execute("SELECT * FROM tracks" + clause + " ORDER BY artist COLLATE NOCASE, album COLLATE NOCASE, track_number, title COLLATE NOCASE", values).fetchall()
+            return conn.execute("SELECT * FROM tracks" + clause + " " + order_by, values).fetchall()
 
     def search(self, text: str = "", artist: str = "", album: str = "", genre: str = "") -> list[sqlite3.Row]:
         return self.tracks(" ".join(part for part in (text, artist, album, genre) if part))
@@ -118,10 +145,10 @@ class MusicDatabase:
                 except Exception:
                     pass
 
-    def record_download(self, url: str, title: str, artist: str = "", status: str = "Bereit") -> None:
+    def record_download(self, url: str, title: str, artist: str = "", playlist: str = "", status: str = "Bereit") -> None:
         with self._connection() as conn:
-            conn.execute("INSERT INTO downloads (url, title, artist, status, progress) VALUES (?, ?, ?, ?, 0)",
-                         (url, title, artist, status))
+            conn.execute("INSERT INTO downloads (url, title, artist, playlist, status, progress) VALUES (?, ?, ?, ?, ?, 0)",
+                         (url, title, artist, playlist, status))
 
     def update_download(self, url: str, status: str, progress: float = 0, speed: str = "", eta: str = "") -> None:
         with self._connection() as conn:
@@ -132,6 +159,16 @@ class MusicDatabase:
     def get_downloads(self) -> list[sqlite3.Row]:
         with self._connection() as conn:
             return conn.execute("SELECT * FROM downloads ORDER BY id DESC LIMIT 100").fetchall()
+
+    def queue_stats(self) -> dict:
+        with self._connection() as conn:
+            rows = conn.execute("SELECT status, COUNT(*) as cnt FROM downloads GROUP BY status").fetchall()
+            status_map = {r["status"]: r["cnt"] for r in rows}
+            aktiv = status_map.get("Lädt...", 0)
+            wartend = status_map.get("In Warteschlange", 0) + status_map.get("Bereit", 0)
+            fertig = status_map.get("Fertig", 0)
+            fehlgeschlagen = status_map.get("Fehler", 0) + status_map.get("Abgebrochen", 0) + status_map.get("Fehlgeschlagen", 0)
+            return {"aktiv": aktiv, "wartend": wartend, "fertig": fertig, "fehlgeschlagen": fehlgeschlagen}
 
     def stats(self) -> sqlite3.Row:
         with self._connection() as conn:
@@ -166,17 +203,43 @@ class MusicDatabase:
         with self._connection() as conn:
             conn.execute("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
 
-    def delete_track(self, track_id: int) -> bool:
+    def load_all_settings(self) -> dict:
+        defaults = {
+            "music_folder": str(self.path.parent),
+            "quality": "320",
+            "parallel": "3",
+            "auto_cover": "1",
+            "auto_metadata": "1",
+            "only_new": "1",
+            "cleanup_missing_startup": "0",
+            "auto_sync_playlist": "0",
+            "shuffle": "0",
+            "repeat": "0",
+            "volume": "75"
+        }
+        with self._connection() as conn:
+            rows = conn.execute("SELECT key, value FROM settings").fetchall()
+            for r in rows:
+                defaults[r["key"]] = r["value"]
+        return defaults
+
+    def save_settings_dict(self, data: dict) -> None:
+        with self._connection() as conn:
+            for k, v in data.items():
+                conn.execute("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (k, str(v)))
+
+    def delete_track(self, track_id: int, delete_file: bool = False) -> bool:
         with self._connection() as conn:
             row = conn.execute("SELECT file_path FROM tracks WHERE id = ?", (track_id,)).fetchone()
             if not row:
                 return False
-            file_path = Path(row[0])
-            if file_path.exists():
-                try:
-                    file_path.unlink()
-                except OSError:
-                    pass
+            if delete_file:
+                file_path = Path(row[0])
+                if file_path.exists():
+                    try:
+                        file_path.unlink()
+                    except OSError:
+                        pass
             conn.execute("DELETE FROM playlist_tracks WHERE track_id = ?", (track_id,))
             conn.execute("DELETE FROM favorites WHERE track_id = ?", (track_id,))
             conn.execute("DELETE FROM tracks WHERE id = ?", (track_id,))
@@ -245,6 +308,11 @@ class MusicDatabase:
                         genre=genre, collection=collection
                     )
                     self.upsert(track, file_path, duration=duration, bitrate=bitrate)
+                    if collection and collection not in ("Einzeltitel", "Single", music_root.name, ".covers"):
+                        with self._connection() as c2:
+                            t_row = c2.execute("SELECT id FROM tracks WHERE file_path = ?", (str(file_path),)).fetchone()
+                            if t_row:
+                                self.add_to_playlist(collection, t_row[0])
                     added += 1
                 except Exception:
                     continue

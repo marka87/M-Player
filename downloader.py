@@ -236,6 +236,11 @@ class MusicDownloader:
             from mutagen.mp3 import MP3
             audio = MP3(destination).info
             self.database.upsert(track, destination, audio.length, int(getattr(audio, "bitrate", 0) / 1000))
+            if track.collection and track.collection not in ("Einzeltitel", "Single"):
+                with self.database._connection() as conn:
+                    row = conn.execute("SELECT id FROM tracks WHERE file_path = ?", (str(destination),)).fetchone()
+                    if row:
+                        self.database.add_to_playlist(track.collection, row[0])
 
     def _check_cancelled(self) -> None:
         if self.cancel_event.is_set():

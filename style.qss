@@ -399,3 +399,105 @@ QScrollBar::handle:vertical:hover {
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0px;
 }
+
+/* =========================================================
+   11. DETAILS PANEL & META BADGES
+   ========================================================= */
+QFrame#detailsPanel {
+    background-color: #171A1F;
+    border: 1px solid #262B34;
+    border-radius: 14px;
+    min-width: 300px;
+    max-width: 300px;
+}
+
+QFrame#metaBox {
+    background-color: #14161B;
+    border: 1px solid #222730;
+    border-radius: 10px;
+}
+
+QLabel#metaBadge {
+    background-color: #203126;
+    color: #3DDC63;
+    border: 1px solid #2B4734;
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+QPushButton#closeBtn {
+    background-color: transparent;
+    border: none;
+    color: #A0A6AD;
+    font-size: 15px;
+    font-weight: bold;
+    min-height: 28px;
+    max-height: 28px;
+    min-width: 28px;
+    max-width: 28px;
+    border-radius: 14px;
+    padding: 0px;
+}
+
+QPushButton#closeBtn:hover {
+    background-color: #252B34;
+    color: #F4F4F4;
+}
+
+/* =========================================================
+   12. FILTER CHIPS
+   ========================================================= */
+QFrame#chipBar {
+    background-color: transparent;
+    border: none;
+    padding: 2px 0px;
+}
+
+QPushButton#chipBtn {
+    background-color: #1C2026;
+    border: 1px solid #262B34;
+    border-radius: 16px;
+    min-height: 32px;
+    max-height: 32px;
+    padding: 4px 14px;
+    color: #A0A6AD;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+QPushButton#chipBtn:hover {
+    background-color: #252B34;
+    color: #F4F4F4;
+    border-color: #3DDC63;
+}
+
+QPushButton#chipBtn[active="true"] {
+    background-color: #203126;
+    border: 1px solid #3DDC63;
+    color: #3DDC63;
+    font-weight: 700;
+}
+
+/* =========================================================
+   13. DOWNLOAD STAT CARDS & PLAYLIST HEADER
+   ========================================================= */
+QFrame#dlStatCard {
+    background-color: #171A1F;
+    border: 1px solid #262B34;
+    border-radius: 12px;
+    padding: 8px 14px;
+}
+
+QFrame#dlStatCard:hover {
+    background-color: #1C2026;
+    border-color: #333A46;
+}
+
+QFrame#playlistHeaderCard {
+    background-color: #171A1F;
+    border: 1px solid #262B34;
+    border-radius: 14px;
+}
+
