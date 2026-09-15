@@ -18,9 +18,9 @@ import yt_dlp
 from spotipy.oauth2 import SpotifyClientCredentials
 
 from database import MusicDatabase
-from metadata import TrackMetadata, target_path, write_id3
+from metadata import TrackMetadata, target_path, write_id3, save_playlist_json
 
-Progress = Callable[[float, str], None]
+Progress = Callable[[float, str, str, str], None]
 
 
 class DownloadFailure(RuntimeError):
@@ -178,11 +178,17 @@ class MusicDownloader:
             def hook(event: dict) -> None:
                 self._check_cancelled()
                 self._wait_if_paused()
+                speed_val = event.get("speed") or 0
+                speed_str = event.get("_speed_str") or (f"{speed_val / (1024 * 1024):.1f} MB/s" if speed_val else "--")
+                eta_val = event.get("eta")
+                eta_str = event.get("_eta_str") or (f"{int(eta_val)}s" if eta_val is not None else "--")
                 if event.get("status") == "downloading":
-                    downloaded, expected = event.get("downloaded_bytes", 0), event.get("total_bytes") or event.get("total_bytes_estimate") or 1
-                    progress(((index - 1) + downloaded / expected) / total, track.title)
+                    downloaded = event.get("downloaded_bytes", 0)
+                    expected = event.get("total_bytes") or event.get("total_bytes_estimate") or 1
+                    ratio = ((index - 1) + (downloaded / expected)) / total
+                    progress(ratio, track.title, speed_str, eta_str)
                 elif event.get("status") == "finished":
-                    progress(index / total, track.title)
+                    progress(index / total, track.title, "Fertig", "0s")
 
             options = {
                 "format": "bestaudio/best",
@@ -195,6 +201,11 @@ class MusicDownloader:
                 "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "320"}],
                 "postprocessor_args": {"FFmpegExtractAudio": ["-codec:a", "libmp3lame", "-b:a", "320k"]},
             }
+            if not shutil.which("ffmpeg"):
+                for cand in Path.home().glob("AppData/Local/Microsoft/WinGet/Packages/*FFmpeg*/bin/ffmpeg.exe"):
+                    if cand.is_file():
+                        options["ffmpeg_location"] = str(cand)
+                        break
             try:
                 with yt_dlp.YoutubeDL(options) as ydl:
                     info = ydl.extract_info(track.source_url, download=True)
@@ -219,8 +230,9 @@ class MusicDownloader:
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination = self._unused_path(destination)
             shutil.move(str(files[0]), destination)
-            if cover and cover[1] == "image/jpeg" and not (destination.parent / "cover.jpg").exists():
+            if cover and not (destination.parent / "cover.jpg").exists():
                 (destination.parent / "cover.jpg").write_bytes(cover[0])
+            save_playlist_json(destination.parent, track.collection or "Einzeltitel", track.source_url, total)
             from mutagen.mp3 import MP3
             audio = MP3(destination).info
             self.database.upsert(track, destination, audio.length, int(getattr(audio, "bitrate", 0) / 1000))

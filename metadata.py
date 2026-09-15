@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from mutagen.mp3 import MP3
-from mutagen.id3 import APIC, ID3, ID3NoHeaderError, TALB, TCON, TIT2, TPE1, TRCK, TDRC
+from mutagen.id3 import APIC, ID3, ID3NoHeaderError, TALB, TCON, TIT2, TPE1, TPE2, TRCK, TDRC
 
 
 @dataclass
@@ -22,6 +22,8 @@ class TrackMetadata:
     cover_url: str = ""
     source_url: str = ""
     collection: str = "Einzeltitel"
+    duration: float = 0
+    bitrate: int = 0
 
 
 def safe_name(value: str, fallback: str) -> str:
@@ -30,10 +32,23 @@ def safe_name(value: str, fallback: str) -> str:
 
 
 def target_path(root: Path, track: TrackMetadata) -> Path:
+    playlist = safe_name(track.collection, "Einzeltitel")
+    num = f"{track.track_number:03d} - " if track.track_number else ""
     artist = safe_name(track.artist, "Unbekannter Artist")
-    album = safe_name(track.album, "Singles") if track.album and track.album != "Unbekanntes Album" else "Singles"
-    prefix = f"{track.track_number:02d} - " if album != "Singles" and track.track_number else ""
-    return root / artist / album / f"{prefix}{safe_name(track.title, 'Unbekannter Titel')}.mp3"
+    title = safe_name(track.title, "Unbekannter Titel")
+    return root / playlist / f"{num}{artist} - {title}.mp3"
+
+
+def save_playlist_json(folder: Path, playlist_name: str, url: str, song_count: int) -> None:
+    folder.mkdir(parents=True, exist_ok=True)
+    import datetime, json
+    data = {
+        "playlist_name": playlist_name,
+        "youtube_url": url,
+        "download_date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "song_count": song_count
+    }
+    (folder / "playlist.json").write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def download_cover(url: str) -> tuple[bytes, str] | None:
@@ -60,7 +75,9 @@ def write_id3(path: Path, track: TrackMetadata) -> tuple[bytes, str] | None:
     tags.delall("APIC")
     tags["TIT2"] = TIT2(encoding=3, text=track.title)
     tags["TPE1"] = TPE1(encoding=3, text=track.artist)
-    tags["TALB"] = TALB(encoding=3, text=track.album)
+    album_name = track.collection if track.collection and track.collection != "Einzeltitel" else track.album
+    tags["TALB"] = TALB(encoding=3, text=album_name)
+    tags["TPE2"] = TPE2(encoding=3, text=album_name)
     if track.year:
         tags["TDRC"] = TDRC(encoding=3, text=track.year)
     if track.track_number:

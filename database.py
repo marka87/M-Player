@@ -41,8 +41,20 @@ class MusicDatabase:
             conn.execute("""CREATE TABLE IF NOT EXISTS playlist_tracks (
                 playlist_id INTEGER NOT NULL, track_id INTEGER NOT NULL, position INTEGER NOT NULL,
                 PRIMARY KEY (playlist_id, track_id), FOREIGN KEY (playlist_id) REFERENCES playlists(id),
-                FOREIGN KEY (track_id) REFERENCES tracks(id))""")
+                FOREIGN KEY (track_id) REFERENCES tracks(id)
+            )""")
             conn.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            conn.execute("""CREATE TABLE IF NOT EXISTS downloads (
+                id INTEGER PRIMARY KEY, url TEXT NOT NULL, title TEXT NOT NULL, artist TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'Bereit', progress REAL NOT NULL DEFAULT 0,
+                speed TEXT NOT NULL DEFAULT '', eta TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""")
+            conn.execute("""CREATE TABLE IF NOT EXISTS favorites (
+                id INTEGER PRIMARY KEY, track_id INTEGER NOT NULL UNIQUE,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (track_id) REFERENCES tracks(id)
+            )""")
 
     def upsert(self, track: object, file_path: Path, duration: float = 0, bitrate: int = 0) -> None:
         values = (track.title, track.artist, track.album, track.year, track.track_number, track.genre, track.source_url, str(file_path), duration, bitrate, track.collection)
@@ -56,8 +68,8 @@ class MusicDatabase:
     def tracks(self, query: str = "", favorites: bool = False) -> list[sqlite3.Row]:
         where, values = [], []
         if query:
-            where.append("(title LIKE ? OR artist LIKE ? OR album LIKE ? OR genre LIKE ?)")
-            values.extend([f"%{query}%"] * 4)
+            where.append("(title LIKE ? OR artist LIKE ? OR album LIKE ? OR genre LIKE ? OR collection LIKE ?)")
+            values.extend([f"%{query}%"] * 5)
         if favorites:
             where.append("favorite = 1")
         clause = " WHERE " + " AND ".join(where) if where else ""
@@ -76,6 +88,47 @@ class MusicDatabase:
     def toggle_favorite(self, track_id: int) -> None:
         with self._connection() as conn:
             conn.execute("UPDATE tracks SET favorite = 1 - favorite WHERE id = ?", (track_id,))
+            fav = conn.execute("SELECT favorite FROM tracks WHERE id = ?", (track_id,)).fetchone()
+            if fav and fav[0] == 1:
+                conn.execute("INSERT OR IGNORE INTO favorites(track_id) VALUES (?)", (track_id,))
+            else:
+                conn.execute("DELETE FROM favorites WHERE track_id = ?", (track_id,))
+
+    def update_track_tags(self, track_id: int, title: str, artist: str, album: str, year: str = "", genre: str = "") -> None:
+        with self._connection() as conn:
+            row = conn.execute("SELECT file_path FROM tracks WHERE id = ?", (track_id,)).fetchone()
+            if not row:
+                return
+            conn.execute("UPDATE tracks SET title = ?, artist = ?, album = ?, year = ?, genre = ? WHERE id = ?",
+                         (title.strip(), artist.strip(), album.strip(), year.strip(), genre.strip(), track_id))
+            file_path = Path(row[0])
+            if file_path.exists():
+                try:
+                    from mutagen.id3 import ID3, TIT2, TPE1, TALB, TDRC, TCON
+                    tags = ID3(file_path)
+                    tags["TIT2"] = TIT2(encoding=3, text=title.strip())
+                    tags["TPE1"] = TPE1(encoding=3, text=artist.strip())
+                    tags["TALB"] = TALB(encoding=3, text=album.strip())
+                    if year: tags["TDRC"] = TDRC(encoding=3, text=year.strip())
+                    if genre: tags["TCON"] = TCON(encoding=3, text=genre.strip())
+                    tags.save(file_path, v2_version=3)
+                except Exception:
+                    pass
+
+    def record_download(self, url: str, title: str, artist: str = "", status: str = "Bereit") -> None:
+        with self._connection() as conn:
+            conn.execute("INSERT INTO downloads (url, title, artist, status, progress) VALUES (?, ?, ?, ?, 0)",
+                         (url, title, artist, status))
+
+    def update_download(self, url: str, status: str, progress: float = 0, speed: str = "", eta: str = "") -> None:
+        with self._connection() as conn:
+            conn.execute("""UPDATE downloads SET status = ?, progress = ?, speed = ?, eta = ?
+                            WHERE id = (SELECT id FROM downloads WHERE url = ? ORDER BY id DESC LIMIT 1)""",
+                         (status, progress, speed, eta, url))
+
+    def get_downloads(self) -> list[sqlite3.Row]:
+        with self._connection() as conn:
+            return conn.execute("SELECT * FROM downloads ORDER BY id DESC LIMIT 100").fetchall()
 
     def stats(self) -> sqlite3.Row:
         with self._connection() as conn:
