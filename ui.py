@@ -324,18 +324,17 @@ class CoverFinderTask(QRunnable):
 
     def run(self):
         try:
+            from cover_enricher import CoverEnricher
+            enricher = CoverEnricher()
             tracks = self.db.tracks()
             total = len(tracks)
             found = 0
             for i, t in enumerate(tracks, 1):
                 self.signals.cover_progress.emit(i, total, t["title"])
                 fp = Path(t["file_path"]) if t["file_path"] else None
-                # Check if cover already exists
-                if fp and fp.parent and (fp.parent / "cover.jpg").exists():
-                    continue
-                cov = find_or_fetch_cover(t["artist"], t["album"], self.root, fp)
-                if cov:
-                    found += 1
+                if fp and fp.is_file():
+                    if enricher.enrich_file(fp, force=False):
+                        found += 1
             self.signals.done.emit(found)
         except Exception as exc:
             self.signals.error.emit(str(exc))
@@ -452,6 +451,7 @@ class MusicWindow(QMainWindow):
         self.nav = QListWidget()
         self.nav.setObjectName("sidebarNav")
         self.nav.setFixedWidth(240)
+        self.nav.setSpacing(6)
         nav_items = [
             ("🎵   Downloader", 0),
             ("📚   Bibliothek", 1),
@@ -460,7 +460,9 @@ class MusicWindow(QMainWindow):
             ("⬇   Downloads", 4),
         ]
         for title, _ in nav_items:
-            self.nav.addItem(title)
+            item = QListWidgetItem(title)
+            item.setSizeHint(QSize(220, 50))
+            self.nav.addItem(item)
         self.nav.currentRowChanged.connect(self.show_page)
         sidebar_layout.addWidget(self.nav)
         sidebar_layout.addStretch()
@@ -864,11 +866,11 @@ class MusicWindow(QMainWindow):
         ctrl_row.setSpacing(8)
         ctrl_row.setAlignment(Qt.AlignCenter)
 
-        self.shuffle_btn = self._button("🔀", self.toggle_shuffle, obj_name="playerBtn")
+        self.shuffle_btn = self._button("⇄", self.toggle_shuffle, obj_name="playerBtn")
         self.prev_btn = self._button("⏮", lambda: self.skip(-1), obj_name="playerBtn")
         self.play_btn = self._button("▶", self.toggle_play, obj_name="playPauseBtn")
         self.next_btn = self._button("⏭", lambda: self.skip(1), obj_name="playerBtn")
-        self.repeat_btn = self._button("🔁", self.toggle_repeat, obj_name="playerBtn")
+        self.repeat_btn = self._button("↻", self.toggle_repeat, obj_name="playerBtn")
 
         for b in (self.shuffle_btn, self.prev_btn, self.play_btn, self.next_btn, self.repeat_btn):
             ctrl_row.addWidget(b)

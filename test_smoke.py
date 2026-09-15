@@ -88,6 +88,28 @@ def run() -> None:
         found = find_or_fetch_cover('ArtistZ', 'AlbumZ', root, dummy_song)
         assert found == local_cover
 
+        # Test CoverEnricher embedding & tag reading
+        from cover_enricher import CoverEnricher
+        enricher = CoverEnricher()
+        from mutagen.id3 import ID3, TIT2, TPE1, TALB
+        test_mp3 = root / 'enrich_test.mp3'
+        test_mp3.write_bytes(b'\xff\xfb\x90\x44' + b'\x00' * 500)
+        tags = ID3()
+        tags['TIT2'] = TIT2(encoding=3, text='Song')
+        tags['TPE1'] = TPE1(encoding=3, text='Artist')
+        tags['TALB'] = TALB(encoding=3, text='Album')
+        tags.save(test_mp3)
+
+        artist, album, has_cover = enricher.read_tags(test_mp3)
+        assert artist == 'Artist'
+        assert album == 'Album'
+        assert has_cover is False
+
+        ok = enricher.embed_cover(test_mp3, b'\xff\xd8\xff\xe0\x00\x10JFIF')
+        assert ok is True
+        _, _, has_cover_now = enricher.read_tags(test_mp3)
+        assert has_cover_now is True
+
 
 if __name__ == '__main__':
     run()

@@ -152,33 +152,40 @@ QPushButton#toolbarBtn:hover {
 QPushButton#playerBtn {
     background-color: transparent;
     border: none;
-    border-radius: 18px;
-    font-size: 16px;
-    min-height: 36px;
-    padding: 6px;
+    border-radius: 21px;
+    font-family: "Segoe UI Symbol", "Segoe UI", sans-serif;
+    font-size: 20px;
+    min-width: 42px;
+    min-height: 42px;
+    max-width: 42px;
+    max-height: 42px;
+    padding: 0px;
     color: #A0A6AD;
 }
 
 QPushButton#playerBtn:hover {
     background-color: #252B34;
-    color: #F4F4F4;
+    color: #3DDC63;
 }
 
 QPushButton#playPauseBtn {
     background-color: #3DDC63;
     color: #0B1E10;
-    border-radius: 22px;
-    font-size: 18px;
+    border: none;
+    border-radius: 26px;
+    font-family: "Segoe UI Symbol", "Segoe UI", sans-serif;
+    font-size: 22px;
     font-weight: bold;
-    min-width: 44px;
-    min-height: 44px;
-    max-width: 44px;
-    max-height: 44px;
-    padding: 0;
+    min-width: 52px;
+    min-height: 52px;
+    max-width: 52px;
+    max-height: 52px;
+    padding: 0px;
 }
 
 QPushButton#playPauseBtn:hover {
     background-color: #48E76E;
+    color: #0B1E10;
 }
 
 /* =========================================================
@@ -215,10 +222,10 @@ QHeaderView::section {
     color: #A0A6AD;
     border: none;
     border-bottom: 1px solid #262B34;
-    padding: 10px 12px;
+    padding: 6px 10px;
+    min-height: 36px;
     font-weight: 600;
     font-size: 12px;
-    text-transform: uppercase;
 }
 
 /* =========================================================
