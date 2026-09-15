@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import shutil
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
+
+from metadata import safe_name
 
 
 class MusicDatabase:
@@ -162,3 +165,114 @@ class MusicDatabase:
     def set_setting(self, key: str, value: str) -> None:
         with self._connection() as conn:
             conn.execute("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
+
+    def delete_track(self, track_id: int) -> bool:
+        with self._connection() as conn:
+            row = conn.execute("SELECT file_path FROM tracks WHERE id = ?", (track_id,)).fetchone()
+            if not row:
+                return False
+            file_path = Path(row[0])
+            if file_path.exists():
+                try:
+                    file_path.unlink()
+                except OSError:
+                    pass
+            conn.execute("DELETE FROM playlist_tracks WHERE track_id = ?", (track_id,))
+            conn.execute("DELETE FROM favorites WHERE track_id = ?", (track_id,))
+            conn.execute("DELETE FROM tracks WHERE id = ?", (track_id,))
+            return True
+
+    def delete_playlist(self, name: str, music_root: Path) -> bool:
+        with self._connection() as conn:
+            p_row = conn.execute("SELECT id FROM playlists WHERE name = ?", (name,)).fetchone()
+            if p_row:
+                conn.execute("DELETE FROM playlist_tracks WHERE playlist_id = ?", (p_row[0],))
+                conn.execute("DELETE FROM playlists WHERE id = ?", (p_row[0],))
+            p_dir = Path(music_root) / safe_name(name, "playlist")
+            if p_dir.exists() and p_dir.is_dir():
+                try:
+                    shutil.rmtree(p_dir)
+                except OSError:
+                    pass
+            all_tracks = conn.execute("SELECT id, file_path FROM tracks WHERE collection = ?", (name,)).fetchall()
+            for t_id, f_path in all_tracks:
+                if not Path(f_path).exists():
+                    conn.execute("DELETE FROM favorites WHERE track_id = ?", (t_id,))
+                    conn.execute("DELETE FROM tracks WHERE id = ?", (t_id,))
+            return True
+
+    def sync_library(self, music_root: Path, progress_callback=None) -> tuple[int, int]:
+        from mutagen.mp3 import MP3
+        from mutagen.id3 import ID3
+        from metadata import TrackMetadata
+
+        music_root = Path(music_root)
+        files = list(music_root.rglob("*.mp3"))
+        total = len(files)
+        added, removed = 0, 0
+
+        with self._connection() as conn:
+            db_tracks = conn.execute("SELECT id, file_path FROM tracks").fetchall()
+            for t_id, f_path in db_tracks:
+                if not Path(f_path).exists():
+                    conn.execute("DELETE FROM playlist_tracks WHERE track_id = ?", (t_id,))
+                    conn.execute("DELETE FROM favorites WHERE track_id = ?", (t_id,))
+                    conn.execute("DELETE FROM tracks WHERE id = ?", (t_id,))
+                    removed += 1
+
+            existing_paths = {row[1] for row in conn.execute("SELECT id, file_path FROM tracks")}
+
+            for i, file_path in enumerate(files, 1):
+                if progress_callback:
+                    progress_callback(i, total, file_path.stem)
+                if str(file_path) in existing_paths:
+                    continue
+
+                try:
+                    audio = MP3(file_path)
+                    tags = ID3(file_path)
+                    title = str(tags.get("TIT2", file_path.stem))
+                    artist = str(tags.get("TPE1", "Unbekannter Artist"))
+                    album = str(tags.get("TALB", file_path.parent.name))
+                    year = str(tags.get("TDRC", ""))
+                    genre = str(tags.get("TCON", ""))
+                    collection = file_path.parent.name
+                    duration = audio.info.length if audio.info else 0
+                    bitrate = int(getattr(audio.info, "bitrate", 0) / 1000) if audio.info else 320
+
+                    track = TrackMetadata(
+                        title=title, artist=artist, album=album, year=year,
+                        genre=genre, collection=collection
+                    )
+                    self.upsert(track, file_path, duration=duration, bitrate=bitrate)
+                    added += 1
+                except Exception:
+                    continue
+
+        return added, removed
+
+    def dashboard_stats(self, music_root: Path) -> dict:
+        with self._connection() as conn:
+            counts = conn.execute("""SELECT
+                COUNT(*) as songs,
+                COUNT(DISTINCT album) as albums,
+                COUNT(DISTINCT artist) as artists,
+                COALESCE(SUM(duration), 0) as duration
+                FROM tracks""").fetchone()
+
+            pl_count = conn.execute("SELECT COUNT(*) FROM playlists").fetchone()[0]
+            files = conn.execute("SELECT file_path FROM tracks").fetchall()
+            total_bytes = sum(Path(f[0]).stat().st_size for f in files if Path(f[0]).exists())
+
+            return {
+                "songs": counts["songs"],
+                "albums": counts["albums"],
+                "artists": counts["artists"],
+                "playlists": pl_count,
+                "duration": counts["duration"],
+                "size_bytes": total_bytes
+            }
+
+    def retry_download(self, download_id: int) -> None:
+        with self._connection() as conn:
+            conn.execute("UPDATE downloads SET status = 'Bereit', progress = 0, speed = '', eta = '' WHERE id = ?", (download_id,))

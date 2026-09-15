@@ -90,3 +90,88 @@ def write_id3(path: Path, track: TrackMetadata) -> tuple[bytes, str] | None:
         tags.add(APIC(encoding=3, mime=mime, type=3, desc="Cover", data=data))
     tags.save(path, v2_version=3)
     return cover
+
+
+def find_or_fetch_cover(artist: str, album: str, music_root: Path, file_path: Path | None = None) -> Path | None:
+    cache_dir = music_root / ".covers"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = cache_dir / f"{safe_name(artist, 'artist')}-{safe_name(album, 'album')}.jpg"
+
+    # Check cache first
+    if cache_file.exists() and cache_file.stat().st_size > 0:
+        return cache_file
+
+    # 1. Check embedded ID3 cover if file_path given
+    if file_path and file_path.is_file():
+        try:
+            tags = ID3(file_path)
+            for apic in tags.getall("APIC"):
+                if apic.data:
+                    cache_file.write_bytes(apic.data)
+                    return cache_file
+        except Exception:
+            pass
+
+    # 2. Check cover.jpg in folder
+    if file_path and file_path.parent:
+        local_cover = file_path.parent / "cover.jpg"
+        if local_cover.is_file():
+            return local_cover
+
+    query = f"{artist} {album}".strip()
+    if not query or query in ("Unbekannter Artist Unbekanntes Album", "Unbekannter Artist Singles", "Singles"):
+        return None
+
+    import urllib.parse
+    import json
+
+    # 3. iTunes Artwork API
+    try:
+        itunes_url = f"https://itunes.apple.com/search?term={urllib.parse.quote(query)}&entity=album&limit=1"
+        req = urllib.request.Request(itunes_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            res = json.loads(resp.read().decode("utf-8"))
+            if res.get("resultCount", 0) > 0:
+                artwork = res["results"][0].get("artworkUrl100", "").replace("100x100bb.jpg", "600x600bb.jpg")
+                if artwork:
+                    data = download_cover(artwork)
+                    if data:
+                        cache_file.write_bytes(data[0])
+                        return cache_file
+    except Exception:
+        pass
+
+    # 4. Deezer Artwork API
+    try:
+        deezer_url = f"https://api.deezer.com/search/album?q={urllib.parse.quote(query)}&limit=1"
+        req = urllib.request.Request(deezer_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            res = json.loads(resp.read().decode("utf-8"))
+            items = res.get("data", [])
+            if items:
+                cover_url = items[0].get("cover_big") or items[0].get("cover_medium")
+                if cover_url:
+                    data = download_cover(cover_url)
+                    if data:
+                        cache_file.write_bytes(data[0])
+                        return cache_file
+    except Exception:
+        pass
+
+    # 5. MusicBrainz / Cover Art Archive
+    try:
+        mb_url = f"https://musicbrainz.org/ws/2/release/?query=artist:{urllib.parse.quote(artist)}%20AND%20release:{urllib.parse.quote(album)}&fmt=json"
+        req = urllib.request.Request(mb_url, headers={"User-Agent": "MPlayer/1.1 (musicapp@example.com)"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            res = json.loads(resp.read().decode("utf-8"))
+            releases = res.get("releases", [])
+            if releases:
+                mbid = releases[0]["id"]
+                data = download_cover(f"https://coverartarchive.org/release/{mbid}/front-500")
+                if data:
+                    cache_file.write_bytes(data[0])
+                    return cache_file
+    except Exception:
+        pass
+
+    return None

@@ -37,9 +37,56 @@ def run() -> None:
         updated = database.tracks('Neuer Titel')[0]
         assert updated['title'] == 'Neuer Titel'
 
-        # Test downloads queue table
+        # Test downloads queue table & retry
         database.record_download('https://youtube.com/test', 'Test Track', 'Test Artist')
-        assert len(database.get_downloads()) == 1
+        dl_list = database.get_downloads()
+        assert len(dl_list) == 1
+        database.update_download('https://youtube.com/test', 'Fehlgeschlagen')
+        database.retry_download(dl_list[0]['id'])
+        assert database.get_downloads()[0]['status'] == 'Bereit'
+
+        # Test dashboard_stats
+        stats = database.dashboard_stats(root)
+        assert stats['songs'] >= 1
+        assert 'size_bytes' in stats
+        assert 'playlists' in stats
+
+        # Test delete_track
+        dummy_file = root / 'dummy.mp3'
+        dummy_file.write_text('dummy audio data')
+        dummy_track = TrackMetadata('Dummy', 'ArtistX', 'AlbumY')
+        database.upsert(dummy_track, dummy_file, duration=120, bitrate=320)
+        assert dummy_file.exists()
+        d_row = database.tracks('Dummy')[0]
+        del_res = database.delete_track(d_row['id'])
+        assert del_res is True
+        assert not dummy_file.exists()
+        assert len(database.tracks('Dummy')) == 0
+
+        # Test sync_library cleanup (removing missing files)
+        database.upsert(dummy_track, root / 'nonexistent.mp3')
+        added, removed = database.sync_library(root)
+        assert removed >= 1
+
+        # Test delete_playlist
+        pl_dir = root / 'DeleteMe'
+        pl_dir.mkdir(parents=True, exist_ok=True)
+        (pl_dir / 'test.mp3').write_text('temp')
+        database.create_playlist('DeleteMe')
+        del_pl_res = database.delete_playlist('DeleteMe', root)
+        assert del_pl_res is True
+        assert not pl_dir.exists()
+        assert 'DeleteMe' not in database.playlist_names()
+
+        # Test find_or_fetch_cover with local cover.jpg
+        from metadata import find_or_fetch_cover
+        cover_dir = root / 'AlbumCoverTest'
+        cover_dir.mkdir(parents=True, exist_ok=True)
+        local_cover = cover_dir / 'cover.jpg'
+        local_cover.write_bytes(b'\xff\xd8\xff\xe0\x00\x10JFIF')
+        dummy_song = cover_dir / 'song.mp3'
+        found = find_or_fetch_cover('ArtistZ', 'AlbumZ', root, dummy_song)
+        assert found == local_cover
 
 
 if __name__ == '__main__':
