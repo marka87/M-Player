@@ -39,8 +39,9 @@ class TrackModel(QAbstractTableModel):
         def value(key, default=""):
             if isinstance(item, dict): return item.get(key, default)
             if hasattr(item, key): return getattr(item, key)
-            return item[key] if key in item.keys() else default
-        values = ["", value("title"), value("artist"), value("album"), time_text(value("duration")), f"{value('bitrate')} kbps" if value("bitrate") else "MP3", self.status.get(index.row(), "Bereit"), value("file_path")]
+            if hasattr(item, "keys") and key in item.keys(): return item[key]
+            return default
+        values = ["", value("title"), value("artist"), value("album"), time_text(value("duration")) if value("duration") else "-", f"{value('bitrate')} kbps" if value("bitrate") else "MP3", self.status.get(index.row(), "Bereit"), value("file_path") or "-"]
         return values[col]
 
     def flags(self, index):
@@ -49,7 +50,9 @@ class TrackModel(QAbstractTableModel):
 
     def setData(self, index, value, role=Qt.EditRole):
         if self.selectable and index.column() == 0 and role == Qt.CheckStateRole:
-            (self.checked.add if value == Qt.Checked else self.checked.discard)(index.row()); self.dataChanged.emit(index, index); return True
+            (self.checked.add if value in (Qt.Checked, Qt.CheckState.Checked, 2) else self.checked.discard)(index.row())
+            self.dataChanged.emit(index, index)
+            return True
         return False
 
     def set_rows(self, rows): self.beginResetModel(); self.rows = list(rows); self.checked = set(range(len(self.rows))) if self.selectable else set(); self.status = {}; self.endResetModel()
@@ -72,15 +75,15 @@ class AnalyzeTask(QRunnable):
 
 
 class DownloadTask(QRunnable):
-    def __init__(self, track, number, total, root, db, cancelled, resumed):
-        super().__init__(); self.track, self.number, self.total, self.root, self.db, self.cancelled, self.resumed, self.signals = track, number, total, root, db, cancelled, resumed, Signals()
+    def __init__(self, track, row_idx, step, total, root, db, cancelled, resumed):
+        super().__init__(); self.track, self.row_idx, self.step, self.total, self.root, self.db, self.cancelled, self.resumed, self.signals = track, row_idx, step, total, root, db, cancelled, resumed, Signals()
     def run(self):
         try:
             loader = MusicDownloader(self.root, self.db, self.cancelled, self.resumed)
-            loader._download_one(self.track, self.number, self.total, lambda value, title: self.signals.progress.emit(value, title))
-            self.signals.status.emit(self.number - 1, "Fertig")
-        except DownloadCancelled: self.signals.status.emit(self.number - 1, "Abgebrochen")
-        except Exception as exc: self.signals.status.emit(self.number - 1, f"Fehler: {exc}")
+            loader._download_one(self.track, self.step, self.total, lambda value, title: self.signals.progress.emit(value, title))
+            self.signals.status.emit(self.row_idx, "Fertig")
+        except DownloadCancelled: self.signals.status.emit(self.row_idx, "Abgebrochen")
+        except Exception as exc: self.signals.status.emit(self.row_idx, f"Fehler: {exc}")
 
 
 class MusicWindow(QMainWindow):
@@ -129,16 +132,19 @@ class MusicWindow(QMainWindow):
         urls = [url for url in self.links.text().split() if url.startswith("http")]
         if not urls: return QMessageBox.warning(self, "Link fehlt", "Bitte mindestens einen gültigen Link eingeben.")
         self.queue_status.setText("Playlist wird analysiert …"); task = AnalyzeTask(urls, self.music_root, self.db); task.signals.done.connect(self.analysis_done); task.signals.error.connect(lambda e: self.queue_status.setText(e)); self.pool.start(task)
-    def analysis_done(self, tracks): self.queue = tracks; self.queue_model.set_rows(tracks); self.queue_status.setText(f"{len(tracks)} Titel gefunden")
+    def analysis_done(self, tracks):
+        self.queue = tracks; self.queue_model.set_rows(tracks); self.queue_status.setText(f"{len(tracks)} Titel gefunden")
+        self.queue_table.resizeColumnsToContents()
     def set_checked(self, checked): self.queue_model.checked = set(range(len(self.queue_model.rows))) if checked else set(); self.queue_model.layoutChanged.emit()
     def only_new(self): self.queue_model.checked = {i for i, t in enumerate(self.queue_model.rows) if not any(r["source_url"] == t.source_url for r in self.db.tracks())}; self.queue_model.layoutChanged.emit()
     def start_download(self):
-        tracks = self.queue_model.selected()
-        if not tracks: return
+        items = [(i, self.queue_model.rows[i]) for i in sorted(self.queue_model.checked)]
+        if not items: return
         self.cancelled.clear(); self.resumed.set(); self.paused = False; self.pool.setMaxThreadCount(int(self.parallel.currentText())); self.progress.setValue(0)
-        for index, track in enumerate(tracks, 1):
-            task = DownloadTask(track, index, len(tracks), self.music_root, self.db, self.cancelled, self.resumed); task.signals.progress.connect(self.download_progress); task.signals.status.connect(self.download_status); self.pool.start(task)
-        self.queue_status.setText(f"{len(tracks)} Downloads gestartet")
+        for step, (row_idx, track) in enumerate(items, 1):
+            task = DownloadTask(track, row_idx, step, len(items), self.music_root, self.db, self.cancelled, self.resumed)
+            task.signals.progress.connect(self.download_progress); task.signals.status.connect(self.download_status); self.pool.start(task)
+        self.queue_status.setText(f"{len(items)} Downloads gestartet")
     def download_progress(self, value, title): self.progress.setValue(int(value * 100)); self.queue_status.setText(f"Lädt: {title}")
     def download_status(self, row, status): self.queue_model.status[row] = status; self.queue_model.layoutChanged.emit(); self.refresh_library()
     def pause_download(self):
