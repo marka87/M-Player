@@ -31,10 +31,10 @@ QListWidget#sidebarNav::item {
     min-height: 48px;
     max-height: 48px;
     padding-left: 18px;
-    margin: 4px 8px;
+    margin: 3px 8px;
     border-radius: 10px;
-    font-size: 14px;
-    font-weight: 500;
+    font-size: 15px;
+    font-weight: 600;
     text-align: left;
     border-left: 4px solid transparent;
 }
@@ -317,16 +317,17 @@ QSlider::handle:horizontal:hover {
 
 QProgressBar {
     border: none;
-    border-radius: 6px;
-    background-color: #262B34;
-    height: 8px;
+    border-radius: 5px;
+    background-color: #20262F;
+    min-height: 10px;
+    max-height: 10px;
     text-align: center;
     color: transparent;
 }
 
 QProgressBar::chunk {
     background-color: #3DDC63;
-    border-radius: 6px;
+    border-radius: 5px;
 }
 
 /* =========================================================
