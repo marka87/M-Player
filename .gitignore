@@ -1,0 +1,23 @@
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local database & downloads
+music_library.db*
+*.db
+*.db-wal
+*.db-shm
+Music/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Editor & OS files
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
