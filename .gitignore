@@ -9,6 +9,13 @@ music_library.db*
 *.db-wal
 *.db-shm
 Music/
+Archive/
+Einzeltitel/
+.covers/
+*.mp3
+*.m4a
+*.webm
+*.opus
 
 # Virtual environments
 .venv/
