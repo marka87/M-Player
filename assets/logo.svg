@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="brandGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1ED760" />
+      <stop offset="100%" stop-color="#1DB954" />
+    </linearGradient>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#171C22" />
+      <stop offset="100%" stop-color="#0F1215" />
+    </linearGradient>
+  </defs>
+  <!-- Squircle tile background with subtle border -->
+  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#bgGrad)" stroke="#262D37" stroke-width="2"/>
+  <!-- 4 Audio Equalizer / Soundwave bars forming letter 'M' -->
+  <rect x="25" y="28" width="12" height="72" rx="6" fill="url(#brandGrad)"/>
+  <rect x="47" y="46" width="12" height="40" rx="6" fill="url(#brandGrad)"/>
+  <rect x="69" y="46" width="12" height="40" rx="6" fill="url(#brandGrad)"/>
+  <rect x="91" y="28" width="12" height="72" rx="6" fill="url(#brandGrad)"/>
+</svg>

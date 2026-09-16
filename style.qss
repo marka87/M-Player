@@ -26,6 +26,11 @@ QListWidget#sidebarNav {
     padding-top: 8px;
 }
 
+QListWidget#sidebarNav QScrollBar:vertical {
+    width: 0px;
+    height: 0px;
+}
+
 QListWidget#sidebarNav::item {
     color: #A0A6AD;
     min-height: 48px;
@@ -53,100 +58,122 @@ QListWidget#sidebarNav::item:selected {
 }
 
 /* =========================================================
-   2. CHECKBOXES (22x22px, rounded, white border, green hover/active)
+   2. CHECKBOXES (18x18px, rounded 4px, dark bg #2a2e38, #4b5563 border, #1db954 checked)
    ========================================================= */
-QCheckBox, QTableView::indicator {
-    width: 22px;
-    height: 22px;
+QCheckBox {
+    color: #E0E0E0;
+    font-size: 13px;
+    min-height: 24px;
+    spacing: 10px;
 }
 
-QTableView::indicator:unchecked, QCheckBox::indicator:unchecked {
-    width: 22px;
-    height: 22px;
-    border: 2px solid #FFFFFF;
-    border-radius: 6px;
-    background-color: #171A1F;
+QCheckBox::indicator, QTableView::indicator {
+    width: 18px;
+    height: 18px;
+    border: 1px solid #4B5563;
+    border-radius: 4px;
+    background-color: #2A2E38;
 }
 
-QTableView::indicator:unchecked:hover, QCheckBox::indicator:unchecked:hover {
-    border: 2px solid #3DDC63;
-    background-color: #20262F;
+QCheckBox::indicator:unchecked:hover, QTableView::indicator:unchecked:hover {
+    border: 1px solid #1DB954;
+    background-color: #323742;
 }
 
-QTableView::indicator:checked, QCheckBox::indicator:checked {
-    width: 22px;
-    height: 22px;
-    border: 2px solid #3DDC63;
-    border-radius: 6px;
-    background-color: #3DDC63;
-    image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%230B1E10' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'%3E%3C/polyline%3E%3C/svg%3E");
+QCheckBox::indicator:checked, QTableView::indicator:checked {
+    border: 1px solid #1DB954;
+    border-radius: 4px;
+    background-color: #1DB954;
+    image: url(assets/icons/check.svg);
+}
+
+QCheckBox::indicator:checked:hover, QTableView::indicator:checked:hover {
+    border-color: #1ED760;
+    background-color: #1ED760;
 }
 
 /* =========================================================
-   3. BUTTONS (Primary 42px #3DDC63, Secondary 42px #252B34)
+   3. BUTTONS (Primary #1DB954 font 600, Secondary #1E232A border #333842)
    ========================================================= */
 QPushButton {
-    background-color: #252B34;
-    border: 1px solid #333A46;
-    border-radius: 12px;
-    min-height: 40px;
-    padding: 8px 18px;
-    color: #F4F4F4;
-    font-size: 14px;
+    background-color: #1E232A;
+    border: 1px solid #333842;
+    border-radius: 8px;
+    min-height: 38px;
+    padding: 8px 16px;
+    color: #E0E0E0;
+    font-size: 13px;
     font-weight: 500;
 }
 
 QPushButton:hover {
-    background-color: #313845;
-    border-color: #444E5E;
+    background-color: #282E38;
+    border-color: #4B5563;
+    color: #FFFFFF;
 }
 
 QPushButton:pressed {
-    background-color: #1C2026;
+    background-color: #171A1F;
 }
 
 QPushButton#accent {
-    background-color: #3DDC63;
+    background-color: #1DB954;
     border: none;
-    color: #0B1E10;
-    font-weight: 700;
-    min-height: 42px;
+    border-radius: 8px;
+    color: #121212;
+    font-size: 14px;
+    font-weight: 600;
+    min-height: 40px;
+    padding: 8px 20px;
 }
 
 QPushButton#accent:hover {
-    background-color: #48E76E;
-    color: #0B1E10;
+    background-color: #1ED760;
+    color: #121212;
 }
 
 QPushButton#accent:pressed {
-    background-color: #32BF54;
+    background-color: #179E46;
+    color: #121212;
 }
 
 QPushButton#danger {
     background-color: #5C1E24;
     border: 1px solid #82272F;
+    border-radius: 8px;
     color: #F8D7DA;
-    min-height: 40px;
+    min-height: 38px;
+    padding: 8px 16px;
+    font-weight: 500;
 }
 
 QPushButton#danger:hover {
     background-color: #782730;
+    border-color: #A0323C;
 }
 
 QPushButton#toolbarBtn {
-    background-color: #1C2026;
-    border: 1px solid #262B34;
-    border-radius: 10px;
+    background-color: #1E232A;
+    border: 1px solid #333842;
+    border-radius: 8px;
     min-height: 36px;
     padding: 6px 14px;
-    color: #F4F4F4;
+    color: #E0E0E0;
     font-size: 13px;
     font-weight: 500;
 }
 
 QPushButton#toolbarBtn:hover {
-    background-color: #252B34;
-    border-color: #3DDC63;
+    background-color: #282E38;
+    border-color: #1DB954;
+    color: #FFFFFF;
+}
+
+QPushButton#toolbarBtn[active="true"] {
+    background-color: #203126;
+    border-color: #1DB954;
+    color: #1DB954;
+    font-weight: 600;
 }
 
 QPushButton#playerBtn {
@@ -257,32 +284,32 @@ QLabel#statLabel {
    6. INPUTS & SEARCH
    ========================================================= */
 QLineEdit, QComboBox {
-    background-color: #171A1F;
-    border: 1px solid #262B34;
-    border-radius: 12px;
+    background-color: #181B20;
+    border: 1px solid #2E3440;
+    border-radius: 8px;
     min-height: 40px;
-    padding: 8px 14px;
+    padding: 10px 14px;
     color: #F4F4F4;
     font-size: 14px;
 }
 
 QLineEdit:focus, QComboBox:focus {
-    border: 1px solid #3DDC63;
-    background-color: #1C2026;
+    border: 1px solid #1DB954;
+    background-color: #242831;
 }
 
 QLineEdit#searchBar {
-    font-size: 14px;
-    min-height: 38px;
-    background-color: #151920;
-    border: 1px solid #262B34;
-    border-radius: 10px;
-    padding: 6px 14px;
+    font-size: 13px;
+    min-height: 36px;
+    background-color: #181B20;
+    border: 1px solid #2E3440;
+    border-radius: 8px;
+    padding: 8px 14px;
 }
 
 QLineEdit#searchBar:focus {
-    border-color: #3DDC63;
-    background-color: #1C2026;
+    border-color: #1DB954;
+    background-color: #242831;
 }
 
 /* =========================================================
@@ -490,5 +517,17 @@ QFrame#playlistHeaderCard {
     background-color: #171A1F;
     border: 1px solid #262B34;
     border-radius: 14px;
+}
+
+/* =========================================================
+   14. SETTINGS SCROLL AREA
+   ========================================================= */
+QScrollArea#settingsScroll {
+    background: transparent;
+    border: none;
+}
+
+QScrollArea#settingsScroll > QWidget > QWidget {
+    background: transparent;
 }
 

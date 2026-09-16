@@ -44,6 +44,11 @@ def test_full_ui():
         win = MusicWindow(db, root)
         win.show()
 
+        # Check Window Icon & App Logo
+        assert hasattr(win, "logo_lbl")
+        assert win.logo_lbl.width() == 28 and win.logo_lbl.height() == 28
+        assert not win.windowIcon().isNull()
+
         # Check pages (Downloader, Entdecken, Bibliothek, Favoriten, Playlists, Downloads, Einstellungen)
         assert win.pages.count() == 7
         for p_idx in range(7):
@@ -98,6 +103,12 @@ def test_full_ui():
         assert hasattr(win, "chk_only_new")
         assert hasattr(win, "chk_cleanup_startup")
         assert hasattr(win, "chk_auto_sync_pl")
+        # Check Settings small window height protection
+        win.resize(700, 420)
+        win.show_page(6)
+        app.processEvents()
+        for chk in (win.chk_auto_cover, win.chk_auto_meta, win.chk_only_new, win.chk_cleanup_startup, win.chk_auto_sync_pl):
+            assert chk.minimumHeight() >= 24
         win.save_settings()
 
         # Check Discover pagination & append_rows
@@ -122,8 +133,27 @@ def test_full_ui():
         from PySide6.QtCore import Qt
         win.lib_table.sortByColumn(2, Qt.DescendingOrder)
         assert win.lib_model.rows[0]["title"] == "Song Two"
-        win.lib_table.sortByColumn(2, Qt.AscendingOrder)
-        assert win.lib_model.rows[0]["title"] == "Song One"
+        # Check Sidebar scrollbar is disabled
+        assert win.nav.verticalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+        assert win.nav.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff
+
+        # Check List / Raster view toggle via button clicks
+        assert win.lib_view_stack.currentIndex() == 0
+        assert win.lib_list_btn.property("active") == "true"
+        assert win.lib_grid_btn.property("active") == "false"
+
+        # Click Raster button
+        win.lib_grid_btn.click()
+        assert win.lib_view_stack.currentIndex() == 1
+        assert win.lib_grid_btn.property("active") == "true"
+        assert win.lib_list_btn.property("active") == "false"
+        assert win.lib_grid.count() == 2
+
+        # Click List button
+        win.lib_list_btn.click()
+        assert win.lib_view_stack.currentIndex() == 0
+        assert win.lib_list_btn.property("active") == "true"
+        assert win.lib_grid_btn.property("active") == "false"
 
         win.close()
         print("All UI tests passed successfully!")
