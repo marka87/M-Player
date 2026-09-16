@@ -197,9 +197,71 @@ def test_full_ui():
         # Check Single Modern Dark theme
         assert win.settings.get("theme") == "dark.qss"
 
+        # 1. Test Auto Tag-Cleaner logic
+        from metadata import clean_artist_title, clean_track_id3
+        c_title, c_artist = clean_artist_title("Faithless - God Is a DJ (Official Video)")
+        assert c_title == "God Is a DJ"
+        assert c_artist == "Faithless"
+
+        c_title2, c_artist2 = clean_artist_title("Song_With_Underscores [HQ] (Lyrics)")
+        assert c_title2 == "Song With Underscores"
+
+        # Test single track clean via UI
+        assert hasattr(win, "clean_selected_tags")
+        assert hasattr(win, "clean_single_track")
+        win.clean_single_track(win.lib_model.rows[0])
+
+        # 2. Test LRCLIB Synced Lyrics parsing & UI
+        from lyrics import parse_lrc
+        lrc_sample = "[00:12.50]Line One\n[00:25.00]Line Two\n[01:05.10]Line Three"
+        parsed = parse_lrc(lrc_sample)
+        assert len(parsed) == 3
+        assert parsed[0] == (12.5, "Line One")
+        assert parsed[1] == (25.0, "Line Two")
+        assert parsed[2] == (65.1, "Line Three")
+
+        # Test details panel lyrics tab & line click seeking
+        assert hasattr(win, "lyrics_list")
+        assert hasattr(win, "detail_tab_lyrics")
+        win.detail_tab_lyrics.click()
+        assert win.detail_stack.currentIndex() == 1
+        win._populate_lyrics(parsed, is_synced=True)
+        assert win.lyrics_list.count() == 3
+        win._update_lyrics_position(15.0)
+        assert win.lyrics_list.currentRow() == 0
+        win._update_lyrics_position(30.0)
+        assert win.lyrics_list.currentRow() == 1
+        # Click lyric line to seek
+        seek_events = []
+        orig_set_pos = win.player.setPosition
+        win.player.setPosition = lambda ms: (seek_events.append(ms), orig_set_pos(ms))
+        win._on_lyric_line_clicked(win.lyrics_list.item(2))
+        assert seek_events == [65100]
+
+        # Switch back to Info tab
+        win.detail_tab_info.click()
+        assert win.detail_stack.currentIndex() == 0
+
+        # 3. Test Mini-Player (Always-on-Top)
+        assert hasattr(win, "mini_player")
+        assert hasattr(win, "toggle_mini_player")
+        assert hasattr(win, "mini_btn")
+        # Toggle to show mini player
+        win.toggle_mini_player()
+        assert win.mini_player.isVisible()
+        win.mini_player.update_track(win.lib_model.rows[0])
+        assert win.mini_player.title_lbl.text() != ""
+        # Seek from mini player
+        win.mini_player._on_seek(500)
+        # Restore main window
+        win.mini_player.restore_main_window()
+        assert not win.mini_player.isVisible()
+        win.player.setPosition = orig_set_pos
+
         win.close()
         print("All UI tests passed successfully!")
 
 if __name__ == "__main__":
     test_full_ui()
+
 

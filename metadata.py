@@ -170,3 +170,70 @@ def read_audio_tags(file_path: Path) -> TrackMetadata:
         duration=duration,
         bitrate=bitrate
     )
+
+
+def clean_artist_title(raw_title: str, raw_artist: str = "") -> tuple[str, str]:
+    """Clean video/download artifacts from titles and extract artist if combined."""
+    title = (raw_title or "").strip()
+    artist = (raw_artist or "").strip()
+
+    # Replace underscores if used instead of spaces
+    if "_" in title:
+        title = title.replace("_", " ")
+    if "_" in artist:
+        artist = artist.replace("_", " ")
+
+    # Remove common video / audio suffixes in parentheses or brackets
+    patterns = [
+        r'[\(\[\{]\s*(?:official\s*(?:video|audio|music\s*video|hd\s*video|visualizer|lyric\s*video)|video\s*clip|clip\s*officiel|official|lyrics?|audio|hq|hd|4k|1080p|720p|explicit|extended\s*mix|remastered(?:\s*\d{4})?|live(?:\s*at\s*[^)\]]+)?|prod\.\s*[^)\]]+)\s*[\)\]\}]',
+        r'\|.*$',
+    ]
+    for pat in patterns:
+        title = re.sub(pat, "", title, flags=re.IGNORECASE).strip()
+
+    # If title has "Artist - Title" format and artist is empty or generic
+    split_match = re.split(r'\s+[-–—]\s+', title, maxsplit=1)
+    if len(split_match) == 2:
+        cand_artist, cand_title = split_match[0].strip(), split_match[1].strip()
+        if cand_artist and cand_title:
+            if not artist or artist in ("Unbekannter Artist", "Unbekannt", "YouTube", cand_artist):
+                artist = cand_artist
+                title = cand_title
+
+    # Clean dangling dashes or extra spaces
+    title = re.sub(r'\s+', ' ', title).strip(" -–—\"'[]()")
+    artist = re.sub(r'\s+', ' ', artist).strip(" -–—\"'[]()")
+
+    return title or raw_title, artist or (raw_artist if raw_artist else "Unbekannter Artist")
+
+
+def clean_track_id3(file_path: Path, db=None) -> tuple[str, str]:
+    """Cleans ID3 tags of an audio file and updates SQLite database if provided."""
+    meta = read_audio_tags(file_path)
+    clean_title, clean_artist = clean_artist_title(meta.title, meta.artist)
+
+    # Update ID3 tags via Mutagen
+    try:
+        if file_path.suffix.lower() == ".mp3":
+            try:
+                tags = ID3(file_path)
+            except ID3NoHeaderError:
+                tags = ID3()
+            tags.setall("TIT2", [TIT2(encoding=3, text=clean_title)])
+            tags.setall("TPE1", [TPE1(encoding=3, text=clean_artist)])
+            tags.save(file_path)
+    except Exception:
+        pass
+
+    # Update SQLite database if provided
+    if db is not None:
+        try:
+            with db._connection() as conn:
+                conn.execute(
+                    "UPDATE tracks SET title = ?, artist = ? WHERE file_path = ?",
+                    (clean_title, clean_artist, str(file_path))
+                )
+        except Exception:
+            pass
+
+    return clean_title, clean_artist

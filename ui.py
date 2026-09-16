@@ -26,7 +26,8 @@ import urllib.parse
 
 from database import MusicDatabase
 from downloader import DownloadCancelled, MusicDownloader
-from metadata import TrackMetadata, safe_name, read_audio_tags
+from metadata import TrackMetadata, safe_name, read_audio_tags, clean_artist_title, clean_track_id3
+from mini_player import MiniPlayerWindow
 
 
 class ClickableSlider(QSlider):
@@ -665,6 +666,29 @@ class CoverFinderTask(QRunnable):
             self.signals.error.emit(str(exc))
 
 
+class LyricsTask(QRunnable):
+    def __init__(self, artist: str, title: str, duration: float = 0.0):
+        super().__init__()
+        self.artist = artist
+        self.title = title
+        self.duration = duration
+        self.signals = Signals()
+
+    def run(self):
+        try:
+            from lyrics import fetch_lyrics
+            res = fetch_lyrics(self.artist, self.title, self.duration)
+            try:
+                self.signals.done.emit(res)
+            except RuntimeError:
+                pass
+        except Exception as exc:
+            try:
+                self.signals.error.emit(str(exc))
+            except RuntimeError:
+                pass
+
+
 class TagEditorDialog(QDialog):
     def __init__(self, track, parent=None):
         super().__init__(parent)
@@ -811,6 +835,7 @@ class MusicWindow(QMainWindow):
         self.search_timer.timeout.connect(self.refresh_library)
 
         self._build_ui()
+        self.mini_player = MiniPlayerWindow(self)
         self._setup_shortcuts()
 
         # Startup cleanup if enabled
@@ -822,6 +847,11 @@ class MusicWindow(QMainWindow):
         self.refresh_playlists()
         self.update_queue_stats()
 
+    def closeEvent(self, event):
+        if hasattr(self, "mini_player"):
+            self.mini_player.close()
+        super().closeEvent(event)
+
     def _setup_shortcuts(self):
         QShortcut(QKeySequence(Qt.Key_Space), self, self._on_space_pressed)
         QShortcut(QKeySequence(Qt.Key_Left), self, lambda: self._seek_relative(-5000))
@@ -829,6 +859,46 @@ class MusicWindow(QMainWindow):
         QShortcut(QKeySequence(Qt.Key_Delete), self, self._on_delete_pressed)
         QShortcut(QKeySequence(Qt.Key_Return), self, self._on_enter_pressed)
         QShortcut(QKeySequence(Qt.Key_Enter), self, self._on_enter_pressed)
+        QShortcut(QKeySequence("Ctrl+M"), self, self.toggle_mini_player)
+
+    def toggle_mini_player(self):
+        if not hasattr(self, "mini_player"):
+            self.mini_player = MiniPlayerWindow(self)
+        if self.mini_player.isVisible():
+            self.mini_player.restore_main_window()
+        else:
+            self.mini_player.update_track(getattr(self, "current_track", None))
+            self.mini_player.set_playing(self.player.playbackState() == QMediaPlayer.PlayingState)
+            if self.player.duration() > 0:
+                self.mini_player.update_position(self.player.position(), self.player.duration())
+            self.mini_player.show()
+            self.showMinimized()
+
+    def clean_selected_tags(self, favorites: bool = False):
+        model = self.fav_model if favorites else self.lib_model
+        selected = model.selected()
+        if not selected:
+            QMessageBox.information(self, "Keine Auswahl", "Bitte markiere mindestens einen Song mit der Checkbox.")
+            return
+        cleaned = 0
+        for t in selected:
+            fp = t["file_path"] if hasattr(t, "keys") else getattr(t, "file_path", "")
+            if fp and Path(fp).exists():
+                clean_track_id3(Path(fp), self.db)
+                cleaned += 1
+        self.refresh_library()
+        self.refresh_dashboard()
+        self.notify("Tags bereinigt", f"{cleaned} Song(s) erfolgreich bereinigt.")
+
+    def clean_single_track(self, track):
+        if not track:
+            return
+        fp = track["file_path"] if hasattr(track, "keys") else getattr(track, "file_path", "")
+        if fp and Path(fp).exists():
+            clean_track_id3(Path(fp), self.db)
+            self.refresh_library()
+            self.refresh_dashboard()
+            self.notify("Tags bereinigt", "Titel und Interpret wurden bereinigt.")
 
     def _on_space_pressed(self):
         focus = QApplication.focusWidget()
@@ -1198,7 +1268,7 @@ class MusicWindow(QMainWindow):
     def _build_details_panel(self) -> QWidget:
         panel = QFrame()
         panel.setObjectName("detailsPanel")
-        panel.setFixedWidth(240)
+        panel.setFixedWidth(280)
         
         main_layout = QVBoxLayout(panel)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -1211,7 +1281,7 @@ class MusicWindow(QMainWindow):
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(12)
+        layout.setSpacing(10)
 
         # Top Header (Shrinked)
         hdr = QHBoxLayout()
@@ -1249,6 +1319,30 @@ class MusicWindow(QMainWindow):
         self.detail_album_badge.setWordWrap(True)
         layout.addWidget(self.detail_album_badge)
 
+        # Tab switcher: Info vs Songtext
+        tab_row = QHBoxLayout()
+        tab_row.setContentsMargins(0, 4, 0, 4)
+        tab_row.setSpacing(6)
+        self.detail_tab_info = QPushButton("Info")
+        self.detail_tab_info.setObjectName("chipBtn")
+        self.detail_tab_info.setProperty("active", "true")
+        self.detail_tab_lyrics = QPushButton("Songtext")
+        self.detail_tab_lyrics.setObjectName("chipBtn")
+        self.detail_tab_lyrics.setProperty("active", "false")
+        self.detail_tab_info.clicked.connect(lambda: self._switch_detail_tab(0))
+        self.detail_tab_lyrics.clicked.connect(lambda: self._switch_detail_tab(1))
+        tab_row.addWidget(self.detail_tab_info)
+        tab_row.addWidget(self.detail_tab_lyrics)
+        layout.addLayout(tab_row)
+
+        self.detail_stack = QStackedWidget()
+
+        # Page 0: Info page
+        info_page = QWidget()
+        info_layout = QVBoxLayout(info_page)
+        info_layout.setContentsMargins(0, 0, 0, 0)
+        info_layout.setSpacing(8)
+
         # Metadata box
         meta_frame = QFrame()
         meta_frame.setObjectName("metaBox")
@@ -1268,20 +1362,47 @@ class MusicWindow(QMainWindow):
             lbl.setStyleSheet("font-size: 12px;")
             meta_layout.addWidget(lbl)
 
-        layout.addWidget(meta_frame)
-        layout.addStretch()
+        info_layout.addWidget(meta_frame)
 
         # Action buttons
         self.detail_play_btn = self._button("Abspielen", self._on_detail_play, True, icon=get_icon("play"), icon_size=QSize(16, 16))
         self.detail_fav_btn = self._button("Zu Favoriten", self._on_detail_fav, icon=get_icon("heart"), icon_size=QSize(16, 16))
+        self.detail_clean_btn = self._button("Tags bereinigen", self._on_detail_clean, icon=get_icon("zap"), icon_size=QSize(16, 16))
+        self.detail_clean_btn.setToolTip("Auto-Clean ID3 Tags (YouTube-Müll entfernen, Artist/Titel trennen)")
         self.detail_cover_btn = self._button("Cover aktualisieren", self._on_detail_update_cover, icon=get_icon("covers"), icon_size=QSize(16, 16))
         self.detail_folder_btn = self._button("Im Explorer anzeigen", self._on_detail_open_folder, icon=get_icon("folder"), icon_size=QSize(16, 16))
         self.detail_del_btn = self._button("Löschen", self._on_detail_delete, obj_name="danger", icon=get_icon("trash"), icon_size=QSize(16, 16))
 
-        for btn in (self.detail_play_btn, self.detail_fav_btn, self.detail_cover_btn, self.detail_folder_btn, self.detail_del_btn):
-            layout.addWidget(btn)
+        for btn in (self.detail_play_btn, self.detail_fav_btn, self.detail_clean_btn, self.detail_cover_btn, self.detail_folder_btn, self.detail_del_btn):
+            info_layout.addWidget(btn)
+
+        self.detail_stack.addWidget(info_page)
+
+        # Page 1: Lyrics page
+        lyrics_page = QWidget()
+        lyrics_layout = QVBoxLayout(lyrics_page)
+        lyrics_layout.setContentsMargins(0, 0, 0, 0)
+        lyrics_layout.setSpacing(6)
+
+        self.lyrics_status_lbl = QLabel("Kein Songtext geladen")
+        self.lyrics_status_lbl.setObjectName("secondary")
+        self.lyrics_status_lbl.setStyleSheet("font-size: 11px; padding: 2px;")
+        lyrics_layout.addWidget(self.lyrics_status_lbl)
+
+        self.lyrics_list = QListWidget()
+        self.lyrics_list.setObjectName("lyricsList")
+        self.lyrics_list.setFocusPolicy(Qt.NoFocus)
+        self.lyrics_list.setVerticalScrollMode(QListWidget.ScrollPerPixel)
+        self.lyrics_list.itemClicked.connect(self._on_lyric_line_clicked)
+        lyrics_layout.addWidget(self.lyrics_list, 1)
+
+        self.detail_stack.addWidget(lyrics_page)
+        layout.addWidget(self.detail_stack, 1)
 
         self.selected_detail_track = None
+        self._current_lyrics_lines = []
+        self._current_lyric_idx = -1
+        self._current_lyrics_track_id = None
         
         scroll.setWidget(content)
         main_layout.addWidget(scroll)
@@ -1330,6 +1451,121 @@ class MusicWindow(QMainWindow):
         self.detail_fav_btn.setText("Aus Favoriten" if fav else "Zu Favoriten")
         self.detail_fav_btn.setIcon(get_icon("heart-filled" if fav else "heart"))
         self.details_panel.show()
+        if hasattr(self, "detail_stack") and self.detail_stack.currentIndex() == 1:
+            self._load_lyrics_for_track(track)
+
+    def _switch_detail_tab(self, idx: int):
+        self.detail_stack.setCurrentIndex(idx)
+        self.detail_tab_info.setProperty("active", "true" if idx == 0 else "false")
+        self.detail_tab_lyrics.setProperty("active", "true" if idx == 1 else "false")
+        self.detail_tab_info.style().unpolish(self.detail_tab_info)
+        self.detail_tab_info.style().polish(self.detail_tab_info)
+        self.detail_tab_lyrics.style().unpolish(self.detail_tab_lyrics)
+        self.detail_tab_lyrics.style().polish(self.detail_tab_lyrics)
+        if idx == 1 and not getattr(self, "_current_lyrics_lines", None):
+            target = getattr(self, "current_track", None) or getattr(self, "selected_detail_track", None)
+            if target:
+                self._load_lyrics_for_track(target)
+
+    def _on_detail_clean(self):
+        if not self.selected_detail_track:
+            return
+        self.clean_single_track(self.selected_detail_track)
+        fp = self.selected_detail_track["file_path"] if hasattr(self.selected_detail_track, "keys") else getattr(self.selected_detail_track, "file_path", "")
+        updated = [t for t in self.db.tracks() if t["file_path"] == fp]
+        if updated:
+            self.show_track_details(updated[0])
+
+    def _clear_lyrics(self, message: str):
+        self._current_lyrics_lines = []
+        self._current_lyric_idx = -1
+        if hasattr(self, "lyrics_list"):
+            self.lyrics_list.clear()
+        if hasattr(self, "lyrics_status_lbl"):
+            self.lyrics_status_lbl.setText(message)
+
+    def _load_lyrics_for_track(self, track):
+        if not track:
+            self._clear_lyrics("Kein Track")
+            return
+        t_title = track["title"] if hasattr(track, "keys") else (track.get("title", "") if isinstance(track, dict) else getattr(track, "title", ""))
+        t_artist = track["artist"] if hasattr(track, "keys") else (track.get("artist", "") if isinstance(track, dict) else getattr(track, "artist", ""))
+        f_path = track["file_path"] if hasattr(track, "keys") else (track.get("file_path", "") if isinstance(track, dict) else getattr(track, "file_path", ""))
+        dur = track["duration"] if hasattr(track, "keys") and "duration" in track.keys() else getattr(track, "duration", 0)
+
+        if not t_title and f_path:
+            t_title = Path(f_path).stem
+
+        self._clear_lyrics("Suche Songtext …")
+        t_id = track.get("id") if hasattr(track, "get") else getattr(track, "id", None)
+        self._current_lyrics_track_id = t_id
+
+        task = LyricsTask(t_artist or "", t_title or "", float(dur or 0))
+
+        def on_lyrics_found(res):
+            cur_id = self.current_track.get("id") if (hasattr(self, "current_track") and hasattr(self.current_track, "get")) else getattr(getattr(self, "current_track", None), "id", None)
+            sel_id = self.selected_detail_track.get("id") if (hasattr(self, "selected_detail_track") and hasattr(self.selected_detail_track, "get")) else getattr(getattr(self, "selected_detail_track", None), "id", None)
+            if self._current_lyrics_track_id not in (cur_id, sel_id):
+                return
+            if not res:
+                self._clear_lyrics("Kein Songtext gefunden")
+                return
+            synced = res.get("syncedLyrics")
+            plain = res.get("plainLyrics")
+            from lyrics import parse_lrc
+            if synced:
+                lines = parse_lrc(synced)
+                self._populate_lyrics(lines, is_synced=True)
+            elif plain:
+                lines = [(-1.0, line.strip()) for line in plain.splitlines() if line.strip()]
+                self._populate_lyrics(lines, is_synced=False)
+            else:
+                self._clear_lyrics("Kein Songtext gefunden")
+
+        def on_lyrics_err(err):
+            self._clear_lyrics("Songtext konnte nicht geladen werden")
+
+        task.signals.done.connect(on_lyrics_found)
+        task.signals.error.connect(on_lyrics_err)
+        self.pool.start(task)
+
+    def _populate_lyrics(self, lines: list[tuple[float, str]], is_synced: bool):
+        self._current_lyrics_lines = lines
+        self._current_lyric_idx = -1
+        self.lyrics_list.clear()
+        if not lines:
+            self.lyrics_status_lbl.setText("Kein Songtext gefunden")
+            return
+        self.lyrics_status_lbl.setText("Live-Synchronisiert (LRCLIB)" if is_synced else "Statischer Text")
+        for ts, text in lines:
+            item = QListWidgetItem(text or "♪")
+            item.setData(Qt.UserRole, ts)
+            item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            self.lyrics_list.addItem(item)
+
+    def _update_lyrics_position(self, pos_sec: float):
+        if not hasattr(self, "lyrics_list") or not getattr(self, "_current_lyrics_lines", None):
+            return
+        lines = self._current_lyrics_lines
+        if not lines or lines[0][0] < 0:
+            return
+        active_idx = -1
+        for i, (ts, _) in enumerate(lines):
+            if ts <= pos_sec:
+                active_idx = i
+            else:
+                break
+        if active_idx != getattr(self, "_current_lyric_idx", -1) and active_idx >= 0:
+            self._current_lyric_idx = active_idx
+            self.lyrics_list.setCurrentRow(active_idx)
+            item = self.lyrics_list.item(active_idx)
+            if item:
+                self.lyrics_list.scrollToItem(item, QAbstractItemView.PositionAtCenter)
+
+    def _on_lyric_line_clicked(self, item):
+        ts = item.data(Qt.UserRole)
+        if ts is not None and ts >= 0:
+            self.player.setPosition(int(round(ts * 1000)))
 
     def _on_detail_play(self):
         if self.selected_detail_track:
@@ -1670,10 +1906,12 @@ class MusicWindow(QMainWindow):
 
         refresh_btn = self._button("Sync", self.run_sync_library, obj_name="toolbarBtn", icon=get_icon("sync"), icon_size=QSize(16, 16))
         cover_btn = self._button("Covers", self.run_cover_search, obj_name="toolbarBtn", icon=get_icon("covers"), icon_size=QSize(16, 16))
+        clean_btn = self._button("Clean", lambda: self.clean_selected_tags(favorites), obj_name="toolbarBtn", icon=get_icon("zap"), icon_size=QSize(16, 16))
+        clean_btn.setToolTip("Markierte Tracks automatisch bereinigen (YouTube-Müll entfernen, Artist/Titel trennen)")
         folder_btn = self._button("Ordner", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.music_root))), obj_name="toolbarBtn", icon=get_icon("folder"), icon_size=QSize(16, 16))
         delete_btn = self._button("Löschen", lambda: self.delete_selected_track(favorites), obj_name="toolbarBtn", icon=get_icon("trash"), icon_size=QSize(16, 16))
 
-        for b in [refresh_btn, cover_btn, folder_btn, delete_btn]:
+        for b in [refresh_btn, cover_btn, clean_btn, folder_btn, delete_btn]:
             tb_layout.addWidget(b)
 
         # Integrated Library Stats Label
@@ -2382,8 +2620,12 @@ class MusicWindow(QMainWindow):
         self.vol_slider.setFixedWidth(110)
         self.vol_slider.valueChanged.connect(self._on_volume_changed)
 
+        self.mini_btn = self._button("", self.toggle_mini_player, obj_name="playerBtn", icon=get_icon("headphones"), icon_size=QSize(18, 18))
+        self.mini_btn.setToolTip("Mini-Player (Immer im Vordergrund) [Ctrl+M]")
+
         right.addWidget(self.vol_btn)
         right.addWidget(self.vol_slider)
+        right.addWidget(self.mini_btn)
         
         layout.addWidget(right_widget, 1)
 
@@ -2811,6 +3053,12 @@ class MusicWindow(QMainWindow):
         self.player.play()
         self.play_btn.setIcon(get_icon("pause"))
 
+        if hasattr(self, "mini_player"):
+            self.mini_player.update_track(track)
+            self.mini_player.set_playing(True)
+
+        self._load_lyrics_for_track(track)
+
     def _toggle_current_fav(self):
         if not self.current_track:
             return
@@ -2862,9 +3110,13 @@ class MusicWindow(QMainWindow):
         if self.player.playbackState() == QMediaPlayer.PlayingState:
             self.player.pause()
             self.play_btn.setIcon(get_icon("play"))
+            if hasattr(self, "mini_player"):
+                self.mini_player.set_playing(False)
         else:
             self.player.play()
             self.play_btn.setIcon(get_icon("pause"))
+            if hasattr(self, "mini_player"):
+                self.mini_player.set_playing(True)
 
     def skip(self, delta: int):
         if not self.active_rows:
@@ -2897,10 +3149,15 @@ class MusicWindow(QMainWindow):
     def _on_position_changed(self, pos):
         self.timeline_slider.setValue(pos)
         self.time_cur.setText(time_text(pos / 1000))
+        if hasattr(self, "mini_player") and self.mini_player.isVisible():
+            self.mini_player.update_position(pos, self.player.duration())
+        self._update_lyrics_position(pos / 1000.0)
 
     def _on_duration_changed(self, dur):
         self.timeline_slider.setMaximum(dur)
         self.time_total.setText(time_text(dur / 1000))
+        if hasattr(self, "mini_player") and self.mini_player.isVisible():
+            self.mini_player.update_position(self.player.position(), dur)
 
     def context_menu(self, table: QTableView, model: TrackModel, point):
         idx = table.indexAt(point)
@@ -2925,6 +3182,7 @@ class MusicWindow(QMainWindow):
         menu.addAction(get_icon("tag"), "Details anzeigen", lambda: self.show_track_details(track))
         menu.addAction(get_icon("heart"), "Favorit umschalten", lambda: (self.db.toggle_favorite(track["id"]), self.refresh_library()))
         menu.addAction(get_icon("edit"), "Tags bearbeiten", lambda: self._edit_tags(track))
+        menu.addAction(get_icon("zap"), "Tags bereinigen (Auto-Clean)", lambda: self.clean_single_track(track))
         menu.addAction(get_icon("covers"), "Albumcover aktualisieren", lambda: self._refresh_single_cover(track))
 
         menu.addSeparator()
