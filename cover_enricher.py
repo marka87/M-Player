@@ -30,6 +30,18 @@ class CoverEnricher:
     def __init__(self, timeout: int = 8) -> None:
         self.timeout = timeout
 
+    def _download_bytes(self, url: str) -> bytes | None:
+        if not url or not url.startswith(("http://", "https://")):
+            return None
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": self.USER_AGENT})
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                data = resp.read(15 * 1024 * 1024)
+            return data if len(data) > 500 else None
+        except Exception as err:
+            logger.debug("Failed downloading bytes from %s: %s", url, err)
+            return None
+
     # =========================================================================
     # 1. API STRATEGY (Priority 1: No Key Required, Fast, High Resolution)
     # =========================================================================
@@ -151,13 +163,7 @@ class CoverEnricher:
             if cache_file.exists() and cache_file.stat().st_size > 1024:
                 return cache_file.read_bytes(), "image/jpeg"
 
-        # 3 & 4. MusicBrainz & Cover Art Archive
-        img_bytes = self.fetch_musicbrainz_cover(artist, eff_album)
-        if img_bytes:
-            self._save_cache(music_root, artist, eff_album, img_bytes)
-            return img_bytes, "image/jpeg"
-
-        # 5. iTunes Artwork API (Up to 1000x1000)
+        # 1. iTunes Artwork API (Up to 1000x1000 - Fast)
         img_bytes = self.fetch_itunes_cover(artist, eff_album)
         if not img_bytes and title and eff_album != title:
             img_bytes = self.fetch_itunes_cover(artist, title)
@@ -165,7 +171,7 @@ class CoverEnricher:
             self._save_cache(music_root, artist, eff_album, img_bytes)
             return img_bytes, "image/jpeg"
 
-        # 6. Deezer API (Up to 1000x1000)
+        # 2. Deezer API (Up to 1000x1000 - Fast)
         img_bytes = self.fetch_deezer_cover(artist, eff_album)
         if not img_bytes and title and eff_album != title:
             img_bytes = self.fetch_deezer_cover(artist, title)
@@ -173,12 +179,18 @@ class CoverEnricher:
             self._save_cache(music_root, artist, eff_album, img_bytes)
             return img_bytes, "image/jpeg"
 
-        # 7. YouTube Thumbnail
+        # 3. YouTube Thumbnail (Direct & 100% reliable for YouTube tracks)
         if source_url:
             img_bytes = self.fetch_youtube_cover(source_url)
             if img_bytes:
                 self._save_cache(music_root, artist, eff_album, img_bytes)
                 return img_bytes, "image/jpeg"
+
+        # 4. MusicBrainz & Cover Art Archive (Fallback)
+        img_bytes = self.fetch_musicbrainz_cover(artist, eff_album)
+        if img_bytes:
+            self._save_cache(music_root, artist, eff_album, img_bytes)
+            return img_bytes, "image/jpeg"
 
         return None
 

@@ -76,8 +76,11 @@ class MusicDownloader:
             if not item:
                 continue
             video_url = item.get("webpage_url") or item.get("url")
+            v_id = item.get("id", "")
             if video_url and not video_url.startswith("http"):
-                video_url = f"https://www.youtube.com/watch?v={item.get('id', video_url)}"
+                video_url = f"https://www.youtube.com/watch?v={v_id or video_url}"
+            thumbs = item.get("thumbnails") or []
+            thumb_url = item.get("thumbnail") or (thumbs[-1].get("url") if thumbs else (f"https://img.youtube.com/vi/{v_id}/hqdefault.jpg" if v_id else ""))
             if video_url:
                 sources.append(TrackMetadata(
                     title=item.get("title") or "Unbekannter Titel",
@@ -86,7 +89,7 @@ class MusicDownloader:
                     year=str(item.get("release_year") or item.get("upload_date", "")[:4]),
                     track_number=position,
                     genre=item.get("genre") or "",
-                    cover_url=item.get("thumbnail") or "",
+                    cover_url=thumb_url,
                     source_url=video_url,
                     collection=collection or "Einzeltitel",
                 ))
@@ -218,7 +221,9 @@ class MusicDownloader:
                 raise DownloadFailure("yt-dlp hat keine MP3-Datei erzeugt. Ist ffmpeg im PATH?")
             self._check_cancelled()
             if not track.cover_url:
-                track.cover_url = info.get("thumbnail") or ""
+                thumbs = info.get("thumbnails") or []
+                v_id = info.get("id", "")
+                track.cover_url = info.get("thumbnail") or (thumbs[-1].get("url") if thumbs else (f"https://img.youtube.com/vi/{v_id}/hqdefault.jpg" if v_id else ""))
             if track.artist == "Unbekannter Artist":
                 track.artist = info.get("artist") or info.get("uploader") or track.artist
             if track.artist.endswith(" - Topic"):
@@ -232,7 +237,7 @@ class MusicDownloader:
             if not track.year:
                 track.year = str(info.get("release_year") or info.get("upload_date", "")[:4])
 
-            # High-res cover enrichment during download (iTunes 1000x1000, Deezer, MusicBrainz)
+            # High-res cover enrichment during download (iTunes 1000x1000, Deezer, YouTube)
             cover_data = None
             try:
                 from cover_enricher import CoverEnricher
@@ -246,6 +251,10 @@ class MusicDownloader:
                 )
             except Exception:
                 pass
+
+            if not cover_data and track.cover_url:
+                from metadata import download_cover
+                cover_data = download_cover(track.cover_url)
 
             cover = write_id3(files[0], track, cover_override=cover_data)
             destination = target_path(self.library_root, track)

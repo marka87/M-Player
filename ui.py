@@ -79,20 +79,19 @@ def get_cover_pixmap(cover_source: str, size: int = 48) -> QPixmap:
             p = Path(cover_source)
             if p.is_file():
                 if p.suffix.lower() == ".mp3":
-                    # 1. Folder cover.jpg
-                    if (p.parent / "cover.jpg").is_file():
+                    # 1. Embedded ID3 APIC frame (individual track cover art)
+                    try:
+                        from mutagen.id3 import ID3
+                        tags = ID3(p)
+                        for apic in tags.getall("APIC"):
+                            if apic.data:
+                                pix.loadFromData(apic.data)
+                                break
+                    except Exception:
+                        pass
+                    # 2. Folder cover.jpg fallback (for complete albums)
+                    if pix.isNull() and (p.parent / "cover.jpg").is_file():
                         pix.load(str(p.parent / "cover.jpg"))
-                    # 2. Embedded ID3 APIC frame
-                    if pix.isNull():
-                        try:
-                            from mutagen.id3 import ID3
-                            tags = ID3(p)
-                            for apic in tags.getall("APIC"):
-                                if apic.data:
-                                    pix.loadFromData(apic.data)
-                                    break
-                        except Exception:
-                            pass
                 else:
                     pix.load(str(p))
             elif p.is_dir() and (p / "cover.jpg").exists():
