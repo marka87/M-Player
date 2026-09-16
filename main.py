@@ -18,6 +18,22 @@ if __name__ == "__main__":
             pass
 
     base = Path(__file__).resolve().parent
+
+    import time
+    import traceback
+
+    def excepthook(exc_type, exc_val, exc_tb):
+        msg = "".join(traceback.format_exception(exc_type, exc_val, exc_tb))
+        try:
+            log_file = base / "crash.log"
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Uncaught Exception:\n{msg}\n")
+        except Exception:
+            pass
+        sys.__excepthook__(exc_type, exc_val, exc_tb)
+
+    sys.excepthook = excepthook
+
     app = QApplication([])
     
     from PySide6.QtGui import QPixmap, QPainter, QColor

@@ -136,6 +136,16 @@ def format_size(bytes_val: int | float) -> str:
     return f"{bytes_val:.1f} TB"
 
 
+def _track_id(track) -> int | None:
+    if not track:
+        return None
+    if isinstance(track, dict):
+        return track.get("id")
+    if hasattr(track, "keys") and "id" in track.keys():
+        return track["id"]
+    return getattr(track, "id", None)
+
+
 ICON_DIR = Path(__file__).resolve().parent / "assets" / "icons"
 
 
@@ -724,6 +734,23 @@ class RecommendationsTask(QRunnable):
         try:
             from recommendations import fetch_recommendations
             items = fetch_recommendations(self.artist, self.title, self.source_url)
+            # Pre-cache thumbnails in background thread so GUI doesn't freeze
+            import hashlib, tempfile, urllib.request
+            for rec in items[:15]:
+                curl = rec.get("cover_url", "")
+                if curl and curl.startswith(("http://", "https://")):
+                    try:
+                        h = hashlib.md5(curl.encode()).hexdigest()
+                        cached = Path(tempfile.gettempdir()) / "mplayer_thumbs" / f"{h}.jpg"
+                        if not cached.is_file() or cached.stat().st_size == 0:
+                            cached.parent.mkdir(parents=True, exist_ok=True)
+                            req = urllib.request.Request(curl, headers={"User-Agent": "Mozilla/5.0"})
+                            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                                c_data = resp.read()
+                            if c_data:
+                                cached.write_bytes(c_data)
+                    except Exception:
+                        pass
             try:
                 self.signals.done.emit(items)
             except RuntimeError:
@@ -859,6 +886,9 @@ class MusicWindow(QMainWindow):
         self.player.setAudioOutput(self.audio)
         self.audio.setVolume(saved_vol)
         self.player.mediaStatusChanged.connect(self._on_media_status)
+        self.player.errorOccurred.connect(self._on_player_error)
+
+        self._active_tasks = set()
 
         self.setWindowTitle("M-Player — Offline Music Manager")
         ico_file = ICON_DIR.parent / "icon.ico"
@@ -892,6 +922,25 @@ class MusicWindow(QMainWindow):
         self.refresh_dashboard()
         self.refresh_playlists()
         self.update_queue_stats()
+
+    def start_task(self, task):
+        """Starts a QRunnable in the thread pool while retaining a strong Python ref to prevent premature GC crashes."""
+        self._active_tasks.add(task)
+        def _cleanup(*args):
+            self._active_tasks.discard(task)
+        if hasattr(task, "signals"):
+            if hasattr(task.signals, "done"):
+                task.signals.done.connect(_cleanup)
+            if hasattr(task.signals, "error"):
+                task.signals.error.connect(_cleanup)
+        self.pool.start(task)
+
+    def _on_player_error(self, error, error_string=""):
+        try:
+            if hasattr(self, "play_btn"):
+                self.play_btn.setIcon(get_icon("play"))
+        except Exception:
+            pass
 
     def closeEvent(self, event):
         if hasattr(self, "mini_player"):
@@ -1578,15 +1627,15 @@ class MusicWindow(QMainWindow):
             t_title = Path(f_path).stem
 
         self._clear_lyrics("Suche Songtext …")
-        t_id = track.get("id") if hasattr(track, "get") else getattr(track, "id", None)
+        t_id = _track_id(track)
         self._current_lyrics_track_id = t_id
 
         task = LyricsTask(t_artist or "", t_title or "", float(dur or 0))
 
         def on_lyrics_found(res):
-            cur_id = self.current_track.get("id") if (hasattr(self, "current_track") and hasattr(self.current_track, "get")) else getattr(getattr(self, "current_track", None), "id", None)
-            sel_id = self.selected_detail_track.get("id") if (hasattr(self, "selected_detail_track") and hasattr(self.selected_detail_track, "get")) else getattr(getattr(self, "selected_detail_track", None), "id", None)
-            if self._current_lyrics_track_id not in (cur_id, sel_id):
+            cur_id = _track_id(getattr(self, "current_track", None))
+            sel_id = _track_id(getattr(self, "selected_detail_track", None))
+            if self._current_lyrics_track_id not in (cur_id, sel_id) or self._current_lyrics_track_id is None:
                 return
             if not res:
                 self._clear_lyrics("Kein Songtext gefunden")
@@ -1604,11 +1653,14 @@ class MusicWindow(QMainWindow):
                 self._clear_lyrics("Kein Songtext gefunden")
 
         def on_lyrics_err(err):
-            self._clear_lyrics("Songtext konnte nicht geladen werden")
+            cur_id = _track_id(getattr(self, "current_track", None))
+            sel_id = _track_id(getattr(self, "selected_detail_track", None))
+            if self._current_lyrics_track_id in (cur_id, sel_id):
+                self._clear_lyrics("Songtext konnte nicht geladen werden")
 
         task.signals.done.connect(on_lyrics_found)
         task.signals.error.connect(on_lyrics_err)
-        self.pool.start(task)
+        self.start_task(task)
 
     def _populate_lyrics(self, lines: list[tuple[float, str]], is_synced: bool):
         self._current_lyrics_lines = lines
@@ -1682,7 +1734,7 @@ class MusicWindow(QMainWindow):
 
         task.signals.done.connect(on_recs_done)
         task.signals.error.connect(on_recs_err)
-        self.pool.start(task)
+        self.start_task(task)
 
     def _populate_recommendations(self, items: list[dict]):
         if not hasattr(self, "similar_list"):
@@ -1806,7 +1858,7 @@ class MusicWindow(QMainWindow):
 
         task.signals.done.connect(on_stream_ready)
         task.signals.error.connect(on_stream_err)
-        self.pool.start(task)
+        self.start_task(task)
 
     def _on_detail_play(self):
         if self.selected_detail_track:
@@ -2066,7 +2118,7 @@ class MusicWindow(QMainWindow):
         task = SearchTask(query, self.discover_filter, start=1, limit=30)
         task.signals.done.connect(self._on_search_done)
         task.signals.error.connect(self._on_search_error)
-        self.pool.start(task)
+        self.start_task(task)
 
     def _on_search_done(self, results: list):
         self.discover_loading = False
@@ -2089,7 +2141,7 @@ class MusicWindow(QMainWindow):
         task = SearchTask(query, self.discover_filter, start=cur_count + 1, limit=30)
         task.signals.done.connect(self._on_search_more_done)
         task.signals.error.connect(lambda _: setattr(self, "discover_loading", False))
-        self.pool.start(task)
+        self.start_task(task)
 
     def _on_search_more_done(self, new_results: list):
         self.discover_loading = False
@@ -2171,7 +2223,7 @@ class MusicWindow(QMainWindow):
             )
             task.signals.progress.connect(self._on_download_progress)
             task.signals.status.connect(self._on_download_status)
-            self.pool.start(task)
+            self.start_task(task)
             self.update_queue_stats()
             self.nav.setCurrentRow(5)
 
@@ -2302,8 +2354,8 @@ class MusicWindow(QMainWindow):
         table = self._create_styled_table(model)
         table.setContextMenuPolicy(Qt.CustomContextMenu)
         table.customContextMenuRequested.connect(lambda p, t=table, m=model: self.context_menu(t, m, p))
-        table.doubleClicked.connect(lambda idx, m=model: self.play(m.rows[idx.row()], idx.row(), m.rows))
-        table.clicked.connect(lambda idx, m=model: self.show_track_details(m.rows[idx.row()]))
+        table.doubleClicked.connect(lambda idx, m=model: self.play(m.rows[idx.row()], idx.row(), m.rows) if 0 <= idx.row() < len(m.rows) else None)
+        table.clicked.connect(lambda idx, m=model: self.show_track_details(m.rows[idx.row()]) if 0 <= idx.row() < len(m.rows) else None)
 
         # Grid View
         grid = QListWidget()
@@ -2956,7 +3008,7 @@ class MusicWindow(QMainWindow):
         task = AnalyzeTask(urls, self.music_root, self.db)
         task.signals.done.connect(self._analysis_done)
         task.signals.error.connect(lambda err: self.pre_status.setText(f"Fehler: {err}"))
-        self.pool.start(task)
+        self.start_task(task)
 
     def _analysis_done(self, tracks):
         self.pre_model.set_rows(tracks)
@@ -3010,7 +3062,7 @@ class MusicWindow(QMainWindow):
             )
             task.signals.progress.connect(self._on_download_progress)
             task.signals.status.connect(self._on_download_status)
-            self.pool.start(task)
+            self.start_task(task)
 
     def _on_download_progress(self, q_idx: int, ratio: float, title: str, speed: str, eta: str):
         status = "Fertig" if ratio >= 1.0 else "Lädt..."
@@ -3065,7 +3117,7 @@ class MusicWindow(QMainWindow):
                     task = DownloadTask(track, i, i, 1, 1, self.music_root, self.db, self.cancelled, self.resumed)
                     task.signals.progress.connect(self._on_download_progress)
                     task.signals.status.connect(self._on_download_status)
-                    self.pool.start(task)
+                    self.start_task(task)
                     retries += 1
         self.queue_summary.setText(f"{retries} Download(s) werden erneut versucht.")
 
@@ -3111,7 +3163,7 @@ class MusicWindow(QMainWindow):
         task.signals.sync_progress.connect(on_prog)
         task.signals.done.connect(on_done)
         task.signals.error.connect(lambda e: (dialog.reject(), QMessageBox.critical(self, "Fehler", e)))
-        self.pool.start(task)
+        self.start_task(task)
 
     def run_cover_search(self):
         dialog = QDialog(self)
@@ -3152,7 +3204,7 @@ class MusicWindow(QMainWindow):
         task.signals.cover_progress.connect(on_prog)
         task.signals.done.connect(on_done)
         task.signals.error.connect(lambda e: (dialog.reject(), QMessageBox.critical(self, "Fehler", e)))
-        self.pool.start(task)
+        self.start_task(task)
 
     def delete_selected_track(self, favorites: bool = False):
         model = self.fav_model if favorites else self.lib_model
@@ -3353,7 +3405,12 @@ class MusicWindow(QMainWindow):
         if hasattr(self, "details_panel") and self.details_panel.isVisible():
             self.show_track_details(track)
 
-        self.player.setSource(QUrl.fromLocalFile(f_path))
+        if not f_path or not Path(f_path).is_file():
+            self.play_btn.setIcon(get_icon("play"))
+            return
+
+        self.player.stop()
+        self.player.setSource(QUrl.fromLocalFile(str(Path(f_path).resolve())))
         self.player.play()
         self.play_btn.setIcon(get_icon("pause"))
 
@@ -3445,6 +3502,10 @@ class MusicWindow(QMainWindow):
 
     def _on_media_status(self, status):
         if status == QMediaPlayer.EndOfMedia:
+            # Prevent infinite skipping if a file failed decoding immediately
+            if self.player.position() < 500 and self.player.duration() > 3000:
+                self.play_btn.setIcon(get_icon("play"))
+                return
             if self.is_repeat:
                 self.player.setPosition(0)
                 self.player.play()
