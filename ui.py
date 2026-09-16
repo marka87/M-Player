@@ -990,7 +990,17 @@ class MusicWindow(QMainWindow):
         panel = QFrame()
         panel.setObjectName("detailsPanel")
         panel.setFixedWidth(300)
-        layout = QVBoxLayout(panel)
+        
+        main_layout = QVBoxLayout(panel)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("background: transparent;")
+        
+        content = QWidget()
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(12)
 
@@ -1010,8 +1020,8 @@ class MusicWindow(QMainWindow):
         # Large Cover
         cover_container = QHBoxLayout()
         self.detail_cover = QLabel()
-        self.detail_cover.setFixedSize(180, 180)
-        self.detail_cover.setPixmap(get_cover_pixmap("", 180))
+        self.detail_cover.setFixedSize(140, 140)
+        self.detail_cover.setPixmap(get_cover_pixmap("", 140))
         self.detail_cover.setAlignment(Qt.AlignCenter)
         cover_container.setAlignment(Qt.AlignCenter)
         cover_container.addWidget(self.detail_cover)
@@ -1066,6 +1076,10 @@ class MusicWindow(QMainWindow):
             layout.addWidget(btn)
 
         self.selected_detail_track = None
+        
+        scroll.setWidget(content)
+        main_layout.addWidget(scroll)
+        
         return panel
 
     def show_track_details(self, track):
@@ -1106,7 +1120,7 @@ class MusicWindow(QMainWindow):
         self.detail_genre.setText(f"Genre: {genre}" if genre else "Genre: --")
         self.detail_plays.setText(f"Gespielt: {plays} mal")
 
-        self.detail_cover.setPixmap(get_cover_pixmap(fp, 180))
+        self.detail_cover.setPixmap(get_cover_pixmap(fp, 140))
         self.detail_fav_btn.setText("Aus Favoriten" if fav else "Zu Favoriten")
         self.detail_fav_btn.setIcon(get_icon("heart-filled" if fav else "heart"))
         self.details_panel.show()
@@ -2072,9 +2086,9 @@ class MusicWindow(QMainWindow):
         layout.setContentsMargins(16, 8, 16, 8)
         layout.setSpacing(16)
 
-        # Left Zone: Cover + Titles (Fixed 300px)
+        # Left Zone: Cover + Titles
         left_widget = QWidget()
-        left_widget.setFixedWidth(300)
+        left_widget.setMinimumWidth(300)
         left = QHBoxLayout(left_widget)
         left.setContentsMargins(0, 0, 0, 0)
         left.setSpacing(12)
@@ -2089,11 +2103,18 @@ class MusicWindow(QMainWindow):
         meta_box.setAlignment(Qt.AlignVCenter)
         self.now_title = QLabel("Kein Song ausgewählt")
         self.now_title.setStyleSheet("font-weight: 700; color: #F4F4F4; font-size: 13px;")
+        
+        from PySide6.QtWidgets import QSizePolicy
+        self.now_title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        
         self.now_artist = QLabel("Wähle einen Song aus der Bibliothek")
         self.now_artist.setObjectName("secondary")
         self.now_artist.setStyleSheet("font-size: 11px;")
+        self.now_artist.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        
         self.now_audio_info = QLabel("320 kbps | 44.1 kHz | Stereo")
         self.now_audio_info.setStyleSheet("color: #3DDC63; font-family: monospace; font-size: 10px;")
+        self.now_audio_info.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.now_audio_info.hide()
         
         meta_box.addWidget(self.now_title)
@@ -2118,7 +2139,7 @@ class MusicWindow(QMainWindow):
         left.addWidget(self.bar_fav_btn)
         left.addWidget(self.bar_folder_btn)
         left.addWidget(self.bar_jump_pl_btn)
-        layout.addWidget(left_widget)
+        layout.addWidget(left_widget, 1)
 
         # Center Zone: Playback Controls & Timeline
         center_widget = QWidget()
