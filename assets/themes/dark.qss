@@ -459,31 +459,6 @@ QFrame#detailsPanel {
     max-width: 280px;
 }
 
-QListWidget#lyricsList {
-    background-color: transparent;
-    border: none;
-    outline: none;
-}
-
-QListWidget#lyricsList::item {
-    color: #8C929C;
-    padding: 6px 8px;
-    border-radius: 6px;
-    font-size: 13px;
-    border: none;
-}
-
-QListWidget#lyricsList::item:hover {
-    background-color: #222933;
-    color: #F4F4F4;
-}
-
-QListWidget#lyricsList::item:selected {
-    background-color: #203126;
-    color: #3DDC63;
-    font-weight: 700;
-}
-
 QListWidget#similarList {
     background-color: transparent;
     border: none;

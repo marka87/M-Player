@@ -211,33 +211,6 @@ def test_full_ui():
         assert hasattr(win, "clean_single_track")
         win.clean_single_track(win.lib_model.rows[0])
 
-        # 2. Test LRCLIB Synced Lyrics parsing & UI
-        from lyrics import parse_lrc
-        lrc_sample = "[00:12.50]Line One\n[00:25.00]Line Two\n[01:05.10]Line Three"
-        parsed = parse_lrc(lrc_sample)
-        assert len(parsed) == 3
-        assert parsed[0] == (12.5, "Line One")
-        assert parsed[1] == (25.0, "Line Two")
-        assert parsed[2] == (65.1, "Line Three")
-
-        # Test details panel lyrics tab & line click seeking
-        assert hasattr(win, "lyrics_list")
-        assert hasattr(win, "detail_tab_lyrics")
-        win.detail_tab_lyrics.click()
-        assert win.detail_stack.currentIndex() == 1
-        win._populate_lyrics(parsed, is_synced=True)
-        assert win.lyrics_list.count() == 3
-        win._update_lyrics_position(15.0)
-        assert win.lyrics_list.currentRow() == 0
-        win._update_lyrics_position(30.0)
-        assert win.lyrics_list.currentRow() == 1
-        # Click lyric line to seek
-        seek_events = []
-        orig_set_pos = win.player.setPosition
-        win.player.setPosition = lambda ms: (seek_events.append(ms), orig_set_pos(ms))
-        win._on_lyric_line_clicked(win.lyrics_list.item(2))
-        assert seek_events == [65100]
-
         # Switch back to Info tab
         win.detail_tab_info.click()
         assert win.detail_stack.currentIndex() == 0
@@ -256,7 +229,6 @@ def test_full_ui():
         # Restore main window
         win.mini_player.restore_main_window()
         assert not win.mini_player.isVisible()
-        win.player.setPosition = orig_set_pos
 
         # 4. Test Direct-Stream Preview (Pre-Listening)
         from downloader import get_stream_url
@@ -291,7 +263,7 @@ def test_full_ui():
         assert hasattr(win, "detail_tab_similar")
         assert hasattr(win, "similar_list")
         win.detail_tab_similar.click()
-        assert win.detail_stack.currentIndex() == 2
+        assert win.detail_stack.currentIndex() == 1
 
         # Populate sample recommendations
         sample_recs = [

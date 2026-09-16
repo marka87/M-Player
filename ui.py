@@ -678,28 +678,6 @@ class CoverFinderTask(QRunnable):
             self.signals.error.emit(str(exc))
 
 
-class LyricsTask(QRunnable):
-    def __init__(self, artist: str, title: str, duration: float = 0.0):
-        super().__init__()
-        self.artist = artist
-        self.title = title
-        self.duration = duration
-        self.signals = Signals()
-
-    def run(self):
-        try:
-            from lyrics import fetch_lyrics
-            res = fetch_lyrics(self.artist, self.title, self.duration)
-            try:
-                self.signals.done.emit(res)
-            except RuntimeError:
-                pass
-        except Exception as exc:
-            try:
-                self.signals.error.emit(str(exc))
-            except RuntimeError:
-                pass
-
 
 class StreamUrlTask(QRunnable):
     def __init__(self, youtube_url: str):
@@ -1414,27 +1392,22 @@ class MusicWindow(QMainWindow):
         self.detail_album_badge.setWordWrap(True)
         layout.addWidget(self.detail_album_badge)
 
-        # Tab switcher: Info vs Songtext vs Ähnliche Songs
+        # Tab switcher: Info vs Ähnliche Songs
         tab_row = QHBoxLayout()
         tab_row.setContentsMargins(0, 4, 0, 4)
         tab_row.setSpacing(4)
         self.detail_tab_info = QPushButton("Info")
         self.detail_tab_info.setObjectName("chipBtn")
         self.detail_tab_info.setProperty("active", "true")
-        self.detail_tab_lyrics = QPushButton("Songtext")
-        self.detail_tab_lyrics.setObjectName("chipBtn")
-        self.detail_tab_lyrics.setProperty("active", "false")
         self.detail_tab_similar = QPushButton("Ähnlich")
         self.detail_tab_similar.setObjectName("chipBtn")
         self.detail_tab_similar.setProperty("active", "false")
         self.detail_tab_similar.setToolTip("Ähnliche Songs & Empfehlungen")
 
         self.detail_tab_info.clicked.connect(lambda: self._switch_detail_tab(0))
-        self.detail_tab_lyrics.clicked.connect(lambda: self._switch_detail_tab(1))
-        self.detail_tab_similar.clicked.connect(lambda: self._switch_detail_tab(2))
+        self.detail_tab_similar.clicked.connect(lambda: self._switch_detail_tab(1))
 
         tab_row.addWidget(self.detail_tab_info)
-        tab_row.addWidget(self.detail_tab_lyrics)
         tab_row.addWidget(self.detail_tab_similar)
         layout.addLayout(tab_row)
 
@@ -1481,27 +1454,7 @@ class MusicWindow(QMainWindow):
 
         self.detail_stack.addWidget(info_page)
 
-        # Page 1: Lyrics page
-        lyrics_page = QWidget()
-        lyrics_layout = QVBoxLayout(lyrics_page)
-        lyrics_layout.setContentsMargins(0, 0, 0, 0)
-        lyrics_layout.setSpacing(6)
-
-        self.lyrics_status_lbl = QLabel("Kein Songtext geladen")
-        self.lyrics_status_lbl.setObjectName("secondary")
-        self.lyrics_status_lbl.setStyleSheet("font-size: 11px; padding: 2px;")
-        lyrics_layout.addWidget(self.lyrics_status_lbl)
-
-        self.lyrics_list = QListWidget()
-        self.lyrics_list.setObjectName("lyricsList")
-        self.lyrics_list.setFocusPolicy(Qt.NoFocus)
-        self.lyrics_list.setVerticalScrollMode(QListWidget.ScrollPerPixel)
-        self.lyrics_list.itemClicked.connect(self._on_lyric_line_clicked)
-        lyrics_layout.addWidget(self.lyrics_list, 1)
-
-        self.detail_stack.addWidget(lyrics_page)
-
-        # Page 2: Recommendations / Similar songs page
+        # Page 1: Recommendations / Similar songs page
         similar_page = QWidget()
         similar_layout = QVBoxLayout(similar_page)
         similar_layout.setContentsMargins(0, 0, 0, 0)
@@ -1522,9 +1475,6 @@ class MusicWindow(QMainWindow):
         layout.addWidget(self.detail_stack, 1)
 
         self.selected_detail_track = None
-        self._current_lyrics_lines = []
-        self._current_lyric_idx = -1
-        self._current_lyrics_track_id = None
         self._last_rec_key = ""
         
         scroll.setWidget(content)
@@ -1574,27 +1524,19 @@ class MusicWindow(QMainWindow):
         self.detail_fav_btn.setText("Aus Favoriten" if fav else "Zu Favoriten")
         self.detail_fav_btn.setIcon(get_icon("heart-filled" if fav else "heart"))
         self.details_panel.show()
-        if hasattr(self, "detail_stack"):
-            if self.detail_stack.currentIndex() == 1:
-                self._load_lyrics_for_track(track)
-            elif self.detail_stack.currentIndex() == 2:
-                self._load_recommendations_for_track(track)
+        if hasattr(self, "detail_stack") and self.detail_stack.currentIndex() == 1:
+            self._load_recommendations_for_track(track)
 
     def _switch_detail_tab(self, idx: int):
         self.detail_stack.setCurrentIndex(idx)
         self.detail_tab_info.setProperty("active", "true" if idx == 0 else "false")
-        self.detail_tab_lyrics.setProperty("active", "true" if idx == 1 else "false")
-        self.detail_tab_similar.setProperty("active", "true" if idx == 2 else "false")
+        self.detail_tab_similar.setProperty("active", "true" if idx == 1 else "false")
         self.detail_tab_info.style().unpolish(self.detail_tab_info)
         self.detail_tab_info.style().polish(self.detail_tab_info)
-        self.detail_tab_lyrics.style().unpolish(self.detail_tab_lyrics)
-        self.detail_tab_lyrics.style().polish(self.detail_tab_lyrics)
         self.detail_tab_similar.style().unpolish(self.detail_tab_similar)
         self.detail_tab_similar.style().polish(self.detail_tab_similar)
         target = getattr(self, "current_track", None) or getattr(self, "selected_detail_track", None)
-        if idx == 1 and not getattr(self, "_current_lyrics_lines", None) and target:
-            self._load_lyrics_for_track(target)
-        elif idx == 2 and (not hasattr(self, "similar_list") or self.similar_list.count() == 0) and target:
+        if idx == 1 and (not hasattr(self, "similar_list") or self.similar_list.count() == 0) and target:
             self._load_recommendations_for_track(target)
 
     def _on_detail_clean(self):
@@ -1605,100 +1547,6 @@ class MusicWindow(QMainWindow):
         updated = [t for t in self.db.tracks() if t["file_path"] == fp]
         if updated:
             self.show_track_details(updated[0])
-
-    def _clear_lyrics(self, message: str):
-        self._current_lyrics_lines = []
-        self._current_lyric_idx = -1
-        if hasattr(self, "lyrics_list"):
-            self.lyrics_list.clear()
-        if hasattr(self, "lyrics_status_lbl"):
-            self.lyrics_status_lbl.setText(message)
-
-    def _load_lyrics_for_track(self, track):
-        if not track:
-            self._clear_lyrics("Kein Track")
-            return
-        t_title = track["title"] if hasattr(track, "keys") else (track.get("title", "") if isinstance(track, dict) else getattr(track, "title", ""))
-        t_artist = track["artist"] if hasattr(track, "keys") else (track.get("artist", "") if isinstance(track, dict) else getattr(track, "artist", ""))
-        f_path = track["file_path"] if hasattr(track, "keys") else (track.get("file_path", "") if isinstance(track, dict) else getattr(track, "file_path", ""))
-        dur = track["duration"] if hasattr(track, "keys") and "duration" in track.keys() else getattr(track, "duration", 0)
-
-        if not t_title and f_path:
-            t_title = Path(f_path).stem
-
-        self._clear_lyrics("Suche Songtext …")
-        t_id = _track_id(track)
-        self._current_lyrics_track_id = t_id
-
-        task = LyricsTask(t_artist or "", t_title or "", float(dur or 0))
-
-        def on_lyrics_found(res):
-            cur_id = _track_id(getattr(self, "current_track", None))
-            sel_id = _track_id(getattr(self, "selected_detail_track", None))
-            if self._current_lyrics_track_id not in (cur_id, sel_id) or self._current_lyrics_track_id is None:
-                return
-            if not res:
-                self._clear_lyrics("Kein Songtext gefunden")
-                return
-            synced = res.get("syncedLyrics")
-            plain = res.get("plainLyrics")
-            from lyrics import parse_lrc
-            if synced:
-                lines = parse_lrc(synced)
-                self._populate_lyrics(lines, is_synced=True)
-            elif plain:
-                lines = [(-1.0, line.strip()) for line in plain.splitlines() if line.strip()]
-                self._populate_lyrics(lines, is_synced=False)
-            else:
-                self._clear_lyrics("Kein Songtext gefunden")
-
-        def on_lyrics_err(err):
-            cur_id = _track_id(getattr(self, "current_track", None))
-            sel_id = _track_id(getattr(self, "selected_detail_track", None))
-            if self._current_lyrics_track_id in (cur_id, sel_id):
-                self._clear_lyrics("Songtext konnte nicht geladen werden")
-
-        task.signals.done.connect(on_lyrics_found)
-        task.signals.error.connect(on_lyrics_err)
-        self.start_task(task)
-
-    def _populate_lyrics(self, lines: list[tuple[float, str]], is_synced: bool):
-        self._current_lyrics_lines = lines
-        self._current_lyric_idx = -1
-        self.lyrics_list.clear()
-        if not lines:
-            self.lyrics_status_lbl.setText("Kein Songtext gefunden")
-            return
-        self.lyrics_status_lbl.setText("Live-Synchronisiert (LRCLIB)" if is_synced else "Statischer Text")
-        for ts, text in lines:
-            item = QListWidgetItem(text or "♪")
-            item.setData(Qt.UserRole, ts)
-            item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-            self.lyrics_list.addItem(item)
-
-    def _update_lyrics_position(self, pos_sec: float):
-        if not hasattr(self, "lyrics_list") or not getattr(self, "_current_lyrics_lines", None):
-            return
-        lines = self._current_lyrics_lines
-        if not lines or lines[0][0] < 0:
-            return
-        active_idx = -1
-        for i, (ts, _) in enumerate(lines):
-            if ts <= pos_sec:
-                active_idx = i
-            else:
-                break
-        if active_idx != getattr(self, "_current_lyric_idx", -1) and active_idx >= 0:
-            self._current_lyric_idx = active_idx
-            self.lyrics_list.setCurrentRow(active_idx)
-            item = self.lyrics_list.item(active_idx)
-            if item:
-                self.lyrics_list.scrollToItem(item, QAbstractItemView.PositionAtCenter)
-
-    def _on_lyric_line_clicked(self, item):
-        ts = item.data(Qt.UserRole)
-        if ts is not None and ts >= 0:
-            self.player.setPosition(int(round(ts * 1000)))
 
     def _load_recommendations_for_track(self, track):
         if not track or not hasattr(self, "similar_list"):
@@ -1847,8 +1695,6 @@ class MusicWindow(QMainWindow):
             self.now_title.setText(f"⚡ [Vorhören] {t_title}")
             self.now_audio_info.setText("Direct Stream")
             self._update_sidebar_mini_card(virtual_track)
-
-            self._load_lyrics_for_track(virtual_track)
             self._load_recommendations_for_track(virtual_track)
 
         def on_stream_err(err):
@@ -3418,7 +3264,6 @@ class MusicWindow(QMainWindow):
             self.mini_player.update_track(track)
             self.mini_player.set_playing(True)
 
-        self._load_lyrics_for_track(track)
         self._load_recommendations_for_track(track)
 
     def _toggle_current_fav(self):
@@ -3517,7 +3362,6 @@ class MusicWindow(QMainWindow):
         self.time_cur.setText(time_text(pos / 1000))
         if hasattr(self, "mini_player") and self.mini_player.isVisible():
             self.mini_player.update_position(pos, self.player.duration())
-        self._update_lyrics_position(pos / 1000.0)
 
     def _on_duration_changed(self, dur):
         self.timeline_slider.setMaximum(dur)
