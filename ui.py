@@ -25,9 +25,10 @@ import sys
 import urllib.parse
 
 from database import MusicDatabase
-from downloader import DownloadCancelled, MusicDownloader
+from downloader import DownloadCancelled, MusicDownloader, get_stream_url
 from metadata import TrackMetadata, safe_name, read_audio_tags, clean_artist_title, clean_track_id3
 from mini_player import MiniPlayerWindow
+from recommendations import fetch_recommendations
 
 
 class ClickableSlider(QSlider):
@@ -444,7 +445,7 @@ class DownloadQueueModel(QAbstractTableModel):
 
 
 class SearchResultModel(QAbstractTableModel):
-    headers = ["Cover", "Titel", "Künstler / Kanal", "Dauer", "Typ"]
+    headers = ["Cover", "Titel", "Künstler / Kanal", "Dauer", "Typ", "Aktionen"]
 
     def __init__(self, rows: list[dict] | None = None):
         super().__init__()
@@ -472,7 +473,7 @@ class SearchResultModel(QAbstractTableModel):
             is_pl = "Playlist" in str(item.get("type", ""))
             return get_icon("playlist") if is_pl else get_icon("library")
         if role == Qt.DisplayRole:
-            if col == 0:
+            if col in (0, 5):
                 return ""
             if col == 1:
                 return item.get("title", "")
@@ -680,6 +681,50 @@ class LyricsTask(QRunnable):
             res = fetch_lyrics(self.artist, self.title, self.duration)
             try:
                 self.signals.done.emit(res)
+            except RuntimeError:
+                pass
+        except Exception as exc:
+            try:
+                self.signals.error.emit(str(exc))
+            except RuntimeError:
+                pass
+
+
+class StreamUrlTask(QRunnable):
+    def __init__(self, youtube_url: str):
+        super().__init__()
+        self.youtube_url = youtube_url
+        self.signals = Signals()
+
+    def run(self):
+        try:
+            from downloader import get_stream_url
+            url = get_stream_url(self.youtube_url)
+            try:
+                self.signals.done.emit(url)
+            except RuntimeError:
+                pass
+        except Exception as exc:
+            try:
+                self.signals.error.emit(str(exc))
+            except RuntimeError:
+                pass
+
+
+class RecommendationsTask(QRunnable):
+    def __init__(self, artist: str, title: str, source_url: str = ""):
+        super().__init__()
+        self.artist = artist
+        self.title = title
+        self.source_url = source_url
+        self.signals = Signals()
+
+    def run(self):
+        try:
+            from recommendations import fetch_recommendations
+            items = fetch_recommendations(self.artist, self.title, self.source_url)
+            try:
+                self.signals.done.emit(items)
             except RuntimeError:
                 pass
         except Exception as exc:
@@ -1268,7 +1313,7 @@ class MusicWindow(QMainWindow):
     def _build_details_panel(self) -> QWidget:
         panel = QFrame()
         panel.setObjectName("detailsPanel")
-        panel.setFixedWidth(280)
+        panel.setFixedWidth(290)
         
         main_layout = QVBoxLayout(panel)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -1319,20 +1364,28 @@ class MusicWindow(QMainWindow):
         self.detail_album_badge.setWordWrap(True)
         layout.addWidget(self.detail_album_badge)
 
-        # Tab switcher: Info vs Songtext
+        # Tab switcher: Info vs Songtext vs Ähnliche Songs
         tab_row = QHBoxLayout()
         tab_row.setContentsMargins(0, 4, 0, 4)
-        tab_row.setSpacing(6)
+        tab_row.setSpacing(4)
         self.detail_tab_info = QPushButton("Info")
         self.detail_tab_info.setObjectName("chipBtn")
         self.detail_tab_info.setProperty("active", "true")
         self.detail_tab_lyrics = QPushButton("Songtext")
         self.detail_tab_lyrics.setObjectName("chipBtn")
         self.detail_tab_lyrics.setProperty("active", "false")
+        self.detail_tab_similar = QPushButton("Ähnlich")
+        self.detail_tab_similar.setObjectName("chipBtn")
+        self.detail_tab_similar.setProperty("active", "false")
+        self.detail_tab_similar.setToolTip("Ähnliche Songs & Empfehlungen")
+
         self.detail_tab_info.clicked.connect(lambda: self._switch_detail_tab(0))
         self.detail_tab_lyrics.clicked.connect(lambda: self._switch_detail_tab(1))
+        self.detail_tab_similar.clicked.connect(lambda: self._switch_detail_tab(2))
+
         tab_row.addWidget(self.detail_tab_info)
         tab_row.addWidget(self.detail_tab_lyrics)
+        tab_row.addWidget(self.detail_tab_similar)
         layout.addLayout(tab_row)
 
         self.detail_stack = QStackedWidget()
@@ -1397,12 +1450,32 @@ class MusicWindow(QMainWindow):
         lyrics_layout.addWidget(self.lyrics_list, 1)
 
         self.detail_stack.addWidget(lyrics_page)
+
+        # Page 2: Recommendations / Similar songs page
+        similar_page = QWidget()
+        similar_layout = QVBoxLayout(similar_page)
+        similar_layout.setContentsMargins(0, 0, 0, 0)
+        similar_layout.setSpacing(6)
+
+        self.similar_status_lbl = QLabel("Keine Empfehlungen geladen")
+        self.similar_status_lbl.setObjectName("secondary")
+        self.similar_status_lbl.setStyleSheet("font-size: 11px; padding: 2px;")
+        similar_layout.addWidget(self.similar_status_lbl)
+
+        self.similar_list = QListWidget()
+        self.similar_list.setObjectName("similarList")
+        self.similar_list.setFocusPolicy(Qt.NoFocus)
+        self.similar_list.setVerticalScrollMode(QListWidget.ScrollPerPixel)
+        similar_layout.addWidget(self.similar_list, 1)
+
+        self.detail_stack.addWidget(similar_page)
         layout.addWidget(self.detail_stack, 1)
 
         self.selected_detail_track = None
         self._current_lyrics_lines = []
         self._current_lyric_idx = -1
         self._current_lyrics_track_id = None
+        self._last_rec_key = ""
         
         scroll.setWidget(content)
         main_layout.addWidget(scroll)
@@ -1451,21 +1524,28 @@ class MusicWindow(QMainWindow):
         self.detail_fav_btn.setText("Aus Favoriten" if fav else "Zu Favoriten")
         self.detail_fav_btn.setIcon(get_icon("heart-filled" if fav else "heart"))
         self.details_panel.show()
-        if hasattr(self, "detail_stack") and self.detail_stack.currentIndex() == 1:
-            self._load_lyrics_for_track(track)
+        if hasattr(self, "detail_stack"):
+            if self.detail_stack.currentIndex() == 1:
+                self._load_lyrics_for_track(track)
+            elif self.detail_stack.currentIndex() == 2:
+                self._load_recommendations_for_track(track)
 
     def _switch_detail_tab(self, idx: int):
         self.detail_stack.setCurrentIndex(idx)
         self.detail_tab_info.setProperty("active", "true" if idx == 0 else "false")
         self.detail_tab_lyrics.setProperty("active", "true" if idx == 1 else "false")
+        self.detail_tab_similar.setProperty("active", "true" if idx == 2 else "false")
         self.detail_tab_info.style().unpolish(self.detail_tab_info)
         self.detail_tab_info.style().polish(self.detail_tab_info)
         self.detail_tab_lyrics.style().unpolish(self.detail_tab_lyrics)
         self.detail_tab_lyrics.style().polish(self.detail_tab_lyrics)
-        if idx == 1 and not getattr(self, "_current_lyrics_lines", None):
-            target = getattr(self, "current_track", None) or getattr(self, "selected_detail_track", None)
-            if target:
-                self._load_lyrics_for_track(target)
+        self.detail_tab_similar.style().unpolish(self.detail_tab_similar)
+        self.detail_tab_similar.style().polish(self.detail_tab_similar)
+        target = getattr(self, "current_track", None) or getattr(self, "selected_detail_track", None)
+        if idx == 1 and not getattr(self, "_current_lyrics_lines", None) and target:
+            self._load_lyrics_for_track(target)
+        elif idx == 2 and (not hasattr(self, "similar_list") or self.similar_list.count() == 0) and target:
+            self._load_recommendations_for_track(target)
 
     def _on_detail_clean(self):
         if not self.selected_detail_track:
@@ -1566,6 +1646,166 @@ class MusicWindow(QMainWindow):
         ts = item.data(Qt.UserRole)
         if ts is not None and ts >= 0:
             self.player.setPosition(int(round(ts * 1000)))
+
+    def _load_recommendations_for_track(self, track):
+        if not track or not hasattr(self, "similar_list"):
+            return
+        t_title = track["title"] if hasattr(track, "keys") else (track.get("title", "") if isinstance(track, dict) else getattr(track, "title", ""))
+        t_artist = track["artist"] if hasattr(track, "keys") else (track.get("artist", "") if isinstance(track, dict) else getattr(track, "artist", ""))
+        src_url = track["source_url"] if (hasattr(track, "keys") and "source_url" in track.keys()) else (track.get("source_url", "") if isinstance(track, dict) else getattr(track, "source_url", ""))
+        f_path = track["file_path"] if hasattr(track, "keys") else (track.get("file_path", "") if isinstance(track, dict) else getattr(track, "file_path", ""))
+
+        if not t_title and f_path:
+            t_title = Path(f_path).stem
+
+        if not t_title:
+            return
+
+        t_key = f"{t_artist} - {t_title}"
+        if getattr(self, "_last_rec_key", "") == t_key and self.similar_list.count() > 0:
+            return
+        self._last_rec_key = t_key
+
+        self.similar_status_lbl.setText(f"Lade Empfehlungen für „{t_title}“ …")
+
+        task = RecommendationsTask(t_artist or "", t_title or "", src_url or "")
+
+        def on_recs_done(items):
+            if getattr(self, "_last_rec_key", "") != t_key:
+                return
+            self._populate_recommendations(items)
+
+        def on_recs_err(_):
+            if hasattr(self, "similar_status_lbl"):
+                self.similar_status_lbl.setText("Keine Empfehlungen gefunden.")
+
+        task.signals.done.connect(on_recs_done)
+        task.signals.error.connect(on_recs_err)
+        self.pool.start(task)
+
+    def _populate_recommendations(self, items: list[dict]):
+        if not hasattr(self, "similar_list"):
+            return
+        self.similar_list.clear()
+        if not items:
+            self.similar_status_lbl.setText("Keine Empfehlungen gefunden.")
+            return
+
+        self.similar_status_lbl.setText(f"{len(items)} ähnliche Songs gefunden:")
+        for rec in items:
+            item = QListWidgetItem(self.similar_list)
+            item.setSizeHint(QSize(250, 48))
+
+            row_w = QWidget()
+            r_lay = QHBoxLayout(row_w)
+            r_lay.setContentsMargins(4, 2, 4, 2)
+            r_lay.setSpacing(6)
+
+            cov_lbl = QLabel()
+            cov_lbl.setFixedSize(36, 36)
+            cov_lbl.setScaledContents(True)
+            cov_lbl.setPixmap(get_cover_pixmap(rec.get("cover_url", ""), 36))
+            r_lay.addWidget(cov_lbl)
+
+            text_col = QVBoxLayout()
+            text_col.setContentsMargins(0, 0, 0, 0)
+            text_col.setSpacing(2)
+
+            t_lbl = QLabel(rec.get("title", ""))
+            t_lbl.setStyleSheet("font-size: 11px; font-weight: 600; color: #F4F4F4;")
+            fm = QFontMetrics(t_lbl.font())
+            t_lbl.setText(fm.elidedText(rec.get("title", ""), Qt.ElideRight, 130))
+
+            a_lbl = QLabel(rec.get("artist", ""))
+            a_lbl.setObjectName("secondary")
+            a_lbl.setStyleSheet("font-size: 10px; color: #A0A6AD;")
+            fm_a = QFontMetrics(a_lbl.font())
+            a_lbl.setText(fm_a.elidedText(rec.get("artist", ""), Qt.ElideRight, 130))
+
+            text_col.addWidget(t_lbl)
+            text_col.addWidget(a_lbl)
+            r_lay.addLayout(text_col, 1)
+
+            btn_play = QPushButton()
+            btn_play.setIcon(get_icon("play"))
+            btn_play.setFixedSize(26, 26)
+            btn_play.setObjectName("toolbarBtn")
+            btn_play.setToolTip("Vorhören (Direct Stream)")
+            btn_play.clicked.connect(lambda _, r=rec: self.preview_stream(r))
+
+            btn_dl = QPushButton()
+            btn_dl.setIcon(get_icon("download"))
+            btn_dl.setFixedSize(26, 26)
+            btn_dl.setObjectName("toolbarBtn")
+            btn_dl.setToolTip("In Bibliothek laden")
+            btn_dl.clicked.connect(lambda _, r=rec: self._handle_search_hit(r))
+
+            r_lay.addWidget(btn_play)
+            r_lay.addWidget(btn_dl)
+            self.similar_list.setItemWidget(item, row_w)
+
+    def preview_stream(self, res: dict):
+        if not res or not res.get("url"):
+            return
+
+        t_title = res.get("title", "Unbekannter Titel")
+        t_artist = res.get("artist", "Unbekannter Künstler")
+        cover_url = res.get("cover_url", "")
+
+        self.now_title.setText(f"⚡ [Lade Stream …] {t_title}")
+        self.now_artist.setText(t_artist)
+        self.bar_cover.setPixmap(get_cover_pixmap(cover_url, 56))
+        self.now_audio_info.setText("Verbinde …")
+        self.now_audio_info.show()
+
+        virtual_track = {
+            "id": None,
+            "title": t_title,
+            "artist": t_artist,
+            "cover_url": cover_url,
+            "file_path": "",
+            "source_url": res.get("url", ""),
+            "duration": res.get("duration", 0),
+            "is_stream": True,
+        }
+        self.current_track = virtual_track
+
+        if hasattr(self, "mini_player"):
+            self.mini_player.update_track(virtual_track)
+
+        task = StreamUrlTask(res["url"])
+
+        def on_stream_ready(stream_url):
+            if not stream_url:
+                self.notify("Stream-Fehler", "Direkt-Stream konnte nicht abgerufen werden.")
+                self.now_title.setText(t_title)
+                self.now_audio_info.setText("Fehler")
+                return
+
+            if getattr(self, "current_track", None) is not virtual_track:
+                return
+
+            self.player.setSource(QUrl(stream_url))
+            self.player.play()
+            self.play_btn.setIcon(get_icon("pause"))
+            if hasattr(self, "mini_player"):
+                self.mini_player.set_playing(True)
+
+            self.now_title.setText(f"⚡ [Vorhören] {t_title}")
+            self.now_audio_info.setText("Direct Stream")
+            self._update_sidebar_mini_card(virtual_track)
+
+            self._load_lyrics_for_track(virtual_track)
+            self._load_recommendations_for_track(virtual_track)
+
+        def on_stream_err(err):
+            self.notify("Stream-Fehler", f"Stream-Fehler: {err}")
+            self.now_title.setText(t_title)
+            self.now_audio_info.setText("Fehler")
+
+        task.signals.done.connect(on_stream_ready)
+        task.signals.error.connect(on_stream_err)
+        self.pool.start(task)
 
     def _on_detail_play(self):
         if self.selected_detail_track:
@@ -1725,7 +1965,12 @@ class MusicWindow(QMainWindow):
         self.discover_status.setObjectName("secondary")
         filter_row.addWidget(self.discover_status)
 
-        self.disc_action_btn = self._button("Ausgewählten Treffer herunterladen", self._download_selected_search_result, True, icon=get_icon("download"))
+        self.disc_preview_btn = self._button("Vorhören", self._preview_selected_search_result, icon=get_icon("play"))
+        self.disc_preview_btn.setToolTip("Ausgewählten Song vorhören (Direct Stream)")
+        filter_row.addWidget(self.disc_preview_btn)
+
+        self.disc_action_btn = self._button("In Bibliothek laden", self._download_selected_search_result, True, icon=get_icon("download"))
+        self.disc_action_btn.setToolTip("Ausgewählten Treffer herunterladen")
         filter_row.addWidget(self.disc_action_btn)
         layout.addLayout(filter_row)
 
@@ -1746,7 +1991,9 @@ class MusicWindow(QMainWindow):
         h.setSectionResizeMode(3, QHeaderView.Fixed)
         self.discover_table.setColumnWidth(3, 80)
         h.setSectionResizeMode(4, QHeaderView.Fixed)
-        self.discover_table.setColumnWidth(4, 110)
+        self.discover_table.setColumnWidth(4, 90)
+        h.setSectionResizeMode(5, QHeaderView.Fixed)
+        self.discover_table.setColumnWidth(5, 175)
 
         self.discover_table.doubleClicked.connect(self._on_search_result_double_clicked)
         self.discover_table.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -1755,6 +2002,42 @@ class MusicWindow(QMainWindow):
 
         layout.addWidget(self.discover_table, 1)
         return page
+
+    def _attach_discover_action_buttons(self, start_idx: int = 0):
+        for row in range(start_idx, len(self.discover_model.rows)):
+            res = self.discover_model.rows[row]
+            w = QWidget()
+            w_layout = QHBoxLayout(w)
+            w_layout.setContentsMargins(2, 2, 2, 2)
+            w_layout.setSpacing(4)
+            w_layout.setAlignment(Qt.AlignCenter)
+
+            if not res.get("is_playlist"):
+                play_btn = QPushButton("Vorhören")
+                play_btn.setObjectName("toolbarBtn")
+                play_btn.setIcon(get_icon("play"))
+                play_btn.setIconSize(QSize(13, 13))
+                play_btn.setToolTip("Vorhören per Direct-Stream (ohne Download)")
+                play_btn.clicked.connect(lambda _, r=res: self.preview_stream(r))
+                w_layout.addWidget(play_btn)
+
+                dl_btn = QPushButton("Laden")
+                dl_btn.setObjectName("primaryBtn")
+                dl_btn.setIcon(get_icon("download"))
+                dl_btn.setIconSize(QSize(13, 13))
+                dl_btn.setToolTip("In Bibliothek laden")
+                dl_btn.clicked.connect(lambda _, r=res: self._handle_search_hit(r))
+                w_layout.addWidget(dl_btn)
+            else:
+                pl_btn = QPushButton("Öffnen")
+                pl_btn.setObjectName("primaryBtn")
+                pl_btn.setIcon(get_icon("playlist"))
+                pl_btn.setIconSize(QSize(13, 13))
+                pl_btn.setToolTip("Playlist im Downloader analysieren")
+                pl_btn.clicked.connect(lambda _, r=res: self._handle_search_hit(r))
+                w_layout.addWidget(pl_btn)
+
+            self.discover_table.setIndexWidget(self.discover_model.index(row, 5), w)
 
     def _on_search_scroll(self, val: int):
         sb = self.discover_table.verticalScrollBar()
@@ -1788,6 +2071,7 @@ class MusicWindow(QMainWindow):
         self.discover_loading = False
         self.discover_btn.setEnabled(True)
         self.discover_model.set_rows(results)
+        self._attach_discover_action_buttons(0)
         if len(results) < 30:
             self.discover_has_more = False
         self.discover_status.setText(f"{len(results)} Treffer gefunden.")
@@ -1814,7 +2098,9 @@ class MusicWindow(QMainWindow):
             return
         if len(new_results) < 30:
             self.discover_has_more = False
+        prev_count = len(self.discover_model.rows)
         self.discover_model.append_rows(new_results)
+        self._attach_discover_action_buttons(prev_count)
         self.discover_status.setText(f"{len(self.discover_model.rows)} Treffer geladen.")
 
     def _on_search_error(self, err: str):
@@ -1827,7 +2113,22 @@ class MusicWindow(QMainWindow):
         if not idx.isValid() or idx.row() >= len(self.discover_model.rows):
             return
         res = self.discover_model.rows[idx.row()]
-        self._handle_search_hit(res)
+        if res.get("is_playlist"):
+            self._handle_search_hit(res)
+        else:
+            self.preview_stream(res)
+
+    def _preview_selected_search_result(self):
+        indexes = self.discover_table.selectionModel().selectedRows()
+        if not indexes:
+            QMessageBox.information(self, "Keine Auswahl", "Bitte wähle zuerst einen Treffer aus der Tabelle aus.")
+            return
+        row = indexes[0].row()
+        res = self.discover_model.rows[row]
+        if res.get("is_playlist"):
+            self._handle_search_hit(res)
+        else:
+            self.preview_stream(res)
 
     def _download_selected_search_result(self):
         indexes = self.discover_table.selectionModel().selectedRows()
@@ -1883,7 +2184,9 @@ class MusicWindow(QMainWindow):
         if res.get("is_playlist"):
             menu.addAction(get_icon("playlist"), "Playlist in Downloader analysieren", lambda: self._handle_search_hit(res))
         else:
-            menu.addAction(get_icon("download"), "Song herunterladen", lambda: self._handle_search_hit(res))
+            menu.addAction(get_icon("play"), "Vorhören (Direct Stream)", lambda: self.preview_stream(res))
+            menu.addAction(get_icon("download"), "In Bibliothek laden", lambda: self._handle_search_hit(res))
+            menu.addAction(get_icon("zap"), "Ähnliche Songs anzeigen", lambda: (self.details_panel.show(), self._switch_detail_tab(2), self._load_recommendations_for_track(res)))
             menu.addAction(get_icon("downloader"), "In Downloader einfügen", lambda: (self.links.setText(res["url"]), self.nav.setCurrentRow(0)))
 
         menu.addAction(get_icon("link"), "YouTube-Link kopieren", lambda: QApplication.clipboard().setText(res["url"]))
@@ -3058,6 +3361,7 @@ class MusicWindow(QMainWindow):
             self.mini_player.set_playing(True)
 
         self._load_lyrics_for_track(track)
+        self._load_recommendations_for_track(track)
 
     def _toggle_current_fav(self):
         if not self.current_track:

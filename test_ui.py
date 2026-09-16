@@ -258,6 +258,51 @@ def test_full_ui():
         assert not win.mini_player.isVisible()
         win.player.setPosition = orig_set_pos
 
+        # 4. Test Direct-Stream Preview (Pre-Listening)
+        from downloader import get_stream_url
+        assert callable(get_stream_url)
+        assert hasattr(win, "preview_stream")
+        assert hasattr(win, "disc_preview_btn")
+        assert win.discover_model.columnCount() == 6
+        assert win.discover_model.headers[5] == "Aktionen"
+
+        # Test previewing search result
+        mock_hit = {
+            "id": "abc12345678",
+            "title": "Preview Song",
+            "artist": "Stream Artist",
+            "url": "https://www.youtube.com/watch?v=abc12345678",
+            "cover_url": "",
+            "duration": 200,
+            "type": "Song"
+        }
+        win.discover_model.set_rows([mock_hit])
+        win._attach_discover_action_buttons(0)
+        action_widget = win.discover_table.indexWidget(win.discover_model.index(0, 5))
+        assert action_widget is not None
+        # Trigger preview
+        win.preview_stream(mock_hit)
+        assert win.current_track is not None
+        assert win.current_track["is_stream"] is True
+
+        # 5. Test Similar Songs / Recommendations (Radio)
+        from recommendations import fetch_recommendations
+        assert callable(fetch_recommendations)
+        assert hasattr(win, "detail_tab_similar")
+        assert hasattr(win, "similar_list")
+        win.detail_tab_similar.click()
+        assert win.detail_stack.currentIndex() == 2
+
+        # Populate sample recommendations
+        sample_recs = [
+            {"id": "rec1", "title": "Similar Track 1", "artist": "Artist 1", "url": "https://...", "cover_url": "", "duration": 180},
+            {"id": "rec2", "title": "Similar Track 2", "artist": "Artist 2", "url": "https://...", "cover_url": "", "duration": 210},
+        ]
+        win._populate_recommendations(sample_recs)
+        assert win.similar_list.count() == 2
+        item_w = win.similar_list.itemWidget(win.similar_list.item(0))
+        assert item_w is not None
+
         win.close()
         print("All UI tests passed successfully!")
 

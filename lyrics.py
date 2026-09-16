@@ -71,3 +71,4 @@ def parse_lrc(lrc_text: str) -> list[tuple[float, str]]:
 
     lines.sort(key=lambda x: x[0])
     return lines
+

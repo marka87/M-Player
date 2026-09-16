@@ -484,6 +484,25 @@ QListWidget#lyricsList::item:selected {
     font-weight: 700;
 }
 
+QListWidget#similarList {
+    background-color: transparent;
+    border: none;
+    outline: none;
+}
+
+QListWidget#similarList::item {
+    background-color: #161A20;
+    border: 1px solid #232832;
+    border-radius: 8px;
+    margin-bottom: 4px;
+    padding: 2px;
+}
+
+QListWidget#similarList::item:hover {
+    background-color: #1E232B;
+    border-color: #2F3744;
+}
+
 QFrame#metaBox {
     background-color: #14161B;
     border: 1px solid #222730;

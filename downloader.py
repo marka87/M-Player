@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import os
 import shutil
 import tempfile
@@ -310,3 +311,27 @@ class MusicDownloader:
             if not candidate.exists():
                 return candidate
             count += 1
+
+
+@functools.lru_cache(maxsize=128)
+def get_stream_url(youtube_url: str) -> str | None:
+    """Extract direct audio streaming URL via yt-dlp without downloading."""
+    if not youtube_url:
+        return None
+    opts = {
+        "format": "ba/bestaudio/best",
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+    }
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(youtube_url, download=False)
+            if not info:
+                return None
+            if "entries" in info and info["entries"]:
+                info = info["entries"][0]
+            return info.get("url")
+    except Exception:
+        return None
+

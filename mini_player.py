@@ -228,3 +228,4 @@ class MiniPlayerWindow(QWidget):
         if dur > 0:
             target_ms = int((value / 1000.0) * dur)
             self.main_win.player.setPosition(target_ms)
+
