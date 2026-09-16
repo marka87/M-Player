@@ -11,14 +11,14 @@ from pathlib import Path
 
 from PySide6.QtCore import (QAbstractTableModel, QModelIndex, QObject, QRunnable,
                             QSize, Qt, QThreadPool, QTimer, QUrl, Signal)
-from PySide6.QtGui import (QAction, QColor, QDesktopServices, QIcon, QKeySequence, QPainter,
-                           QPainterPath, QPixmap, QShortcut)
+from PySide6.QtGui import (QAction, QColor, QDesktopServices, QFont, QFontMetrics, QIcon,
+                           QKeySequence, QPainter, QPainterPath, QPen, QPixmap, QShortcut)
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog, QFileDialog,
                              QFrame, QHBoxLayout, QHeaderView, QInputDialog,
                              QLabel, QLineEdit, QListWidget, QListWidgetItem,
                              QMainWindow, QMenu, QMessageBox, QProgressBar,
-                             QPushButton, QScrollArea, QSlider, QStackedWidget, QSystemTrayIcon,
+                             QPushButton, QScrollArea, QSizePolicy, QSlider, QStackedWidget, QSystemTrayIcon,
                              QTableView, QVBoxLayout, QWidget)
 import subprocess
 import sys
@@ -45,52 +45,100 @@ class ClickableSlider(QSlider):
 from PySide6.QtWidgets import QStyledItemDelegate, QStyle
 from PySide6.QtCore import QRect
 class GridCardDelegate(QStyledItemDelegate):
+    """Theme-aware item delegate for rendering song and album cards in grid mode."""
     def paint(self, painter, option, index):
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing)
-        
-        rect = option.rect
-        rect.adjust(8, 8, -8, -8)  # Card gaps
-        
+
+        rect = QRect(option.rect)
+        rect.adjust(6, 6, -6, -6)  # Card margin
+
+        is_hover = bool(option.state & QStyle.State_MouseOver)
+        is_selected = bool(option.state & QStyle.State_Selected)
+
+        # Detect active skin from parent window
+        win = option.widget.window() if option.widget else None
+        current_theme = getattr(win, "settings", {}).get("theme", "dark.qss") if win else "dark.qss"
+
+        if current_theme == "light.qss":
+            bg_color = QColor("#F0F4F8") if is_hover else (QColor("#E8F5E9") if is_selected else QColor("#FFFFFF"))
+            border_color = QColor("#10B981") if (is_hover or is_selected) else QColor("#E5E7EB")
+            title_color = QColor("#111827")
+            artist_color = QColor("#6B7280")
+            border_radius = 8
+        elif current_theme == "winamp.qss":
+            bg_color = QColor("#2A2A2A") if is_hover else (QColor("#1E1E1E") if is_selected else QColor("#232323"))
+            border_color = QColor("#00FF00") if (is_hover or is_selected) else QColor("#3D3D3D")
+            title_color = QColor("#00FF00") if (is_hover or is_selected) else QColor("#FFFFFF")
+            artist_color = QColor("#A0A0A0")
+            border_radius = 0  # Retro Winamp square look
+        else:  # dark.qss
+            bg_color = QColor("#222832") if is_hover else (QColor("#1A2421") if is_selected else QColor("#161A20"))
+            border_color = QColor("#3DDC63") if (is_hover or is_selected) else QColor("#262E38")
+            title_color = QColor("#FFFFFF")
+            artist_color = QColor("#A7A7A7")
+            border_radius = 8
+
+        # Draw card background & border
         path = QPainterPath()
-        path.addRoundedRect(rect, 8, 8)
-        
-        is_hover = option.state & QStyle.State_MouseOver
-        bg_color = QColor("#222832") if is_hover else QColor("#161a20")
+        path.addRoundedRect(rect, border_radius, border_radius)
         painter.fillPath(path, bg_color)
-        
+        painter.strokePath(path, QPen(border_color, 1))
+
+        # Retrieve track or playlist data
         track = index.data(Qt.UserRole)
-        if track:
-            icon = index.data(Qt.DecorationRole)
-            if icon:
-                pixmap = icon.pixmap(140, 140)
-                img_x = rect.x() + (rect.width() - 140) // 2
-                img_y = rect.y() + 10
-                painter.drawPixmap(QRect(img_x, img_y, 140, 140), pixmap)
-                
+        icon = index.data(Qt.DecorationRole)
+
+        # Draw Cover centered (130x130)
+        cover_size = 130
+        img_x = rect.x() + (rect.width() - cover_size) // 2
+        img_y = rect.y() + 8
+        if icon:
+            pixmap = icon.pixmap(cover_size, cover_size)
+            painter.drawPixmap(QRect(img_x, img_y, cover_size, cover_size), pixmap)
+
+        if isinstance(track, dict):
             title = track.get("title") or "Unbekannt"
             artist = track.get("artist") or "Unbekannt"
-            
-            painter.setFont(option.font)
-            fm = QFontMetrics(option.font)
-            text_rect = QRect(rect.x() + 10, rect.y() + 158, rect.width() - 20, 18)
-            elided_title = fm.elidedText(title, Qt.ElideRight, text_rect.width())
-            painter.setPen(QColor("#FFFFFF"))
-            painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignTop, elided_title)
-            
-            artist_font = option.font
-            artist_font.setPixelSize(11)
-            painter.setFont(artist_font)
-            fm_art = QFontMetrics(artist_font)
-            artist_rect = QRect(rect.x() + 10, rect.y() + 178, rect.width() - 20, 16)
-            elided_artist = fm_art.elidedText(artist, Qt.ElideRight, artist_rect.width())
-            painter.setPen(QColor("#a7a7a7"))
-            painter.drawText(artist_rect, Qt.AlignLeft | Qt.AlignTop, elided_artist)
-            
+        else:
+            raw_text = index.data(Qt.DisplayRole) or ""
+            parts = raw_text.split("\n")
+            title = parts[0] if parts else (str(track) if track else "Unbekannt")
+            artist = parts[1] if len(parts) > 1 else ""
+
+        # Draw Song Title (12px, bold, elided)
+        title_font = QFont(option.font)
+        title_font.setPixelSize(12)
+        title_font.setBold(True)
+        if current_theme == "winamp.qss":
+            title_font.setFamily("Consolas")
+        painter.setFont(title_font)
+        fm_title = QFontMetrics(title_font)
+
+        text_width = max(10, rect.width() - 16)
+        text_rect = QRect(rect.x() + 8, img_y + cover_size + 6, text_width, 18)
+        elided_title = fm_title.elidedText(title, Qt.ElideRight, text_width)
+        painter.setPen(title_color)
+        painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, elided_title)
+
+        # Draw Artist (11px, elided)
+        artist_font = QFont(option.font)
+        artist_font.setPixelSize(11)
+        artist_font.setBold(False)
+        if current_theme == "winamp.qss":
+            artist_font.setFamily("Consolas")
+        painter.setFont(artist_font)
+        fm_artist = QFontMetrics(artist_font)
+
+        artist_rect = QRect(rect.x() + 8, text_rect.bottom() + 2, text_width, 16)
+        elided_artist = fm_artist.elidedText(artist, Qt.ElideRight, text_width)
+        painter.setPen(artist_color)
+        painter.drawText(artist_rect, Qt.AlignLeft | Qt.AlignVCenter, elided_artist)
+
         painter.restore()
 
     def sizeHint(self, option, index):
-        return QSize(170, 210)
+        return QSize(176, 216)
 
 
 def time_text(seconds: float) -> str:
@@ -916,7 +964,6 @@ class MusicWindow(QMainWindow):
 
         self.nav = QListWidget()
         self.nav.setObjectName("sidebarNav")
-        self.nav.setFixedWidth(240)
         self.nav.setSpacing(6)
         self.nav.setIconSize(QSize(20, 20))
         self.nav.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -931,10 +978,15 @@ class MusicWindow(QMainWindow):
         ]
         for title, icon_name, _ in nav_items:
             item = QListWidgetItem(get_icon(icon_name), f"  {title}")
-            item.setSizeHint(QSize(220, 50))
+            item.setSizeHint(QSize(200, 48))
             self.nav.addItem(item)
         self.nav.currentRowChanged.connect(self.show_page)
-        sidebar_layout.addWidget(self.nav, 1)
+        sidebar_layout.addWidget(self.nav, 0)
+        sidebar_layout.addStretch(1)
+
+        # Now Playing Mini-Card / Stats Fallback Widget
+        self.sidebar_mini_card = self._build_sidebar_mini_card()
+        sidebar_layout.addWidget(self.sidebar_mini_card)
 
         try:
             from main import __version__
@@ -942,7 +994,7 @@ class MusicWindow(QMainWindow):
             __version__ = "v1.0.0"
 
         self.version_lbl = QLabel(__version__)
-        self.version_lbl.setStyleSheet("color: #6a7282; font-size: 11px;")
+        self.version_lbl.setStyleSheet("color: #6a7282; font-size: 11px; padding-top: 4px;")
         self.version_lbl.setAlignment(Qt.AlignCenter)
         sidebar_layout.addWidget(self.version_lbl)
 
@@ -988,6 +1040,117 @@ class MusicWindow(QMainWindow):
         if hasattr(self, "fav_stats_lbl"):
             fav_count = len(self.fav_model.rows) if hasattr(self, "fav_model") else 0
             self.fav_stats_lbl.setText(f"{fav_count} Favoriten")
+        self._update_sidebar_mini_card(getattr(self, "current_track", None))
+
+    def _build_sidebar_mini_card(self) -> QWidget:
+        card = QFrame()
+        card.setObjectName("sidebarMiniCard")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(8, 8, 8, 8)
+        card_layout.setSpacing(6)
+
+        # 1. Track Active Widget
+        self.sb_track_box = QWidget()
+        tb_layout = QHBoxLayout(self.sb_track_box)
+        tb_layout.setContentsMargins(0, 0, 0, 0)
+        tb_layout.setSpacing(8)
+
+        self.sb_cover = QLabel()
+        self.sb_cover.setFixedSize(48, 48)
+        self.sb_cover.setPixmap(get_cover_pixmap("", 48))
+        self.sb_cover.setScaledContents(True)
+
+        meta_layout = QVBoxLayout()
+        meta_layout.setContentsMargins(0, 0, 0, 0)
+        meta_layout.setSpacing(2)
+        meta_layout.setAlignment(Qt.AlignVCenter)
+
+        self.sb_title = QLabel("Kein Song")
+        self.sb_title.setStyleSheet("font-weight: 700; font-size: 12px;")
+        self.sb_title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+
+        self.sb_artist = QLabel("Bereit")
+        self.sb_artist.setObjectName("secondary")
+        self.sb_artist.setStyleSheet("font-size: 11px;")
+        self.sb_artist.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+
+        meta_layout.addWidget(self.sb_title)
+        meta_layout.addWidget(self.sb_artist)
+
+        self.sb_fav_btn = self._button("", self._toggle_current_fav, obj_name="playerBtn", icon=get_icon("heart"), icon_size=QSize(16, 16))
+        self.sb_fav_btn.setFixedSize(28, 28)
+        self.sb_fav_btn.setToolTip("Zu Favoriten hinzufügen")
+
+        tb_layout.addWidget(self.sb_cover)
+        tb_layout.addLayout(meta_layout, 1)
+        tb_layout.addWidget(self.sb_fav_btn)
+
+        # 2. Idle Fallback Stats Widget
+        self.sb_stats_box = QWidget()
+        sb_layout = QHBoxLayout(self.sb_stats_box)
+        sb_layout.setContentsMargins(4, 4, 4, 4)
+        sb_layout.setSpacing(8)
+
+        stats_icon = QLabel()
+        stats_icon.setPixmap(get_icon("library").pixmap(24, 24))
+        stats_icon.setFixedSize(24, 24)
+
+        stats_info = QVBoxLayout()
+        stats_info.setContentsMargins(0, 0, 0, 0)
+        stats_info.setSpacing(1)
+        stats_info.setAlignment(Qt.AlignVCenter)
+
+        self.sb_stats_title = QLabel("Bibliothek")
+        self.sb_stats_title.setStyleSheet("font-weight: 600; font-size: 11px;")
+        self.sb_stats_desc = QLabel("0 Songs · 0 Alben")
+        self.sb_stats_desc.setObjectName("secondary")
+        self.sb_stats_desc.setStyleSheet("font-size: 10px;")
+
+        stats_info.addWidget(self.sb_stats_title)
+        stats_info.addWidget(self.sb_stats_desc)
+
+        sb_layout.addWidget(stats_icon)
+        sb_layout.addLayout(stats_info, 1)
+
+        card_layout.addWidget(self.sb_track_box)
+        card_layout.addWidget(self.sb_stats_box)
+
+        card.mousePressEvent = self._on_sidebar_mini_card_clicked
+
+        self._update_sidebar_mini_card(None)
+        return card
+
+    def _on_sidebar_mini_card_clicked(self, event):
+        if getattr(self, "current_track", None):
+            self.show_track_details(self.current_track)
+        else:
+            self.show_page(2)
+
+    def _update_sidebar_mini_card(self, track=None):
+        if not hasattr(self, "sb_track_box") or not hasattr(self, "sb_stats_box"):
+            return
+        if track:
+            self.sb_stats_box.hide()
+            self.sb_track_box.show()
+            t_title = track.get("title", "") if hasattr(track, "get") else getattr(track, "title", "")
+            t_artist = track.get("artist", "") if hasattr(track, "get") else getattr(track, "artist", "")
+            f_path = track.get("file_path", "") if hasattr(track, "get") else getattr(track, "file_path", "")
+            fav = track.get("favorite", 0) if hasattr(track, "get") else getattr(track, "favorite", 0)
+
+            self.sb_title.setText(t_title or "Unbekannter Titel")
+            self.sb_artist.setText(t_artist or "Unbekannter Interpret")
+            self.sb_cover.setPixmap(get_cover_pixmap(f_path, 48))
+            self.sb_fav_btn.setIcon(get_icon("heart-filled" if fav else "heart"))
+        else:
+            self.sb_track_box.hide()
+            self.sb_stats_box.show()
+            try:
+                st = self.db.stats()
+                songs = st["songs"] if st else 0
+                albums = st["albums"] if st else 0
+                self.sb_stats_desc.setText(f"{songs} Songs · {albums} Alben")
+            except Exception:
+                self.sb_stats_desc.setText("Bereit")
 
     def _build_details_panel(self) -> QWidget:
         panel = QFrame()
@@ -1559,8 +1722,8 @@ class MusicWindow(QMainWindow):
         # Grid View
         grid = QListWidget()
         grid.setViewMode(QListWidget.IconMode)
-        grid.setIconSize(QSize(140, 140))
-        grid.setGridSize(QSize(186, 226))
+        grid.setIconSize(QSize(130, 130))
+        grid.setGridSize(QSize(176, 216))
         grid.setResizeMode(QListWidget.Adjust)
         grid.setSpacing(0)
         grid.setViewportMargins(8, 8, 8, 8)
@@ -2593,7 +2756,7 @@ class MusicWindow(QMainWindow):
 
         self.now_title.setText(t_title)
         self.now_artist.setText(t_artist)
-        self.bar_cover.setPixmap(get_cover_pixmap(f_path, 72))
+        self.bar_cover.setPixmap(get_cover_pixmap(f_path, 56))
         
         # Audio Info (Mock / statisch für Performance nach Ponytail)
         self.now_audio_info.show()
@@ -2601,13 +2764,14 @@ class MusicWindow(QMainWindow):
         if hasattr(self, "bar_fav_btn"):
             self.bar_fav_btn.setIcon(get_icon("heart-filled" if fav else "heart"))
 
+        self._update_sidebar_mini_card(track)
+
         if coll and coll not in ("Einzeltitel", "Single") and hasattr(self, "bar_pl_badge"):
             self.bar_pl_badge.setText(coll)
             self.bar_pl_badge.show()
             self.current_playlist_name = coll
         elif hasattr(self, "bar_pl_badge"):
             self.bar_pl_badge.hide()
-            self.current_playlist_name = ""
             self.current_playlist_name = ""
 
         if hasattr(self, "details_panel") and self.details_panel.isVisible():
@@ -2627,7 +2791,11 @@ class MusicWindow(QMainWindow):
             if updated:
                 self.current_track = updated[0]
                 is_fav = bool(self.current_track["favorite"])
-                self.bar_fav_btn.setIcon(get_icon("heart-filled" if is_fav else "heart"))
+                if hasattr(self, "bar_fav_btn"):
+                    self.bar_fav_btn.setIcon(get_icon("heart-filled" if is_fav else "heart"))
+                if hasattr(self, "sb_fav_btn"):
+                    self.sb_fav_btn.setIcon(get_icon("heart-filled" if is_fav else "heart"))
+                self._update_sidebar_mini_card(self.current_track)
             self.refresh_library()
             self.refresh_dashboard()
 
@@ -2826,3 +2994,9 @@ class MusicWindow(QMainWindow):
         theme_path = base / "assets" / "themes" / theme_file
         if theme_path.exists():
             QApplication.instance().setStyleSheet(theme_path.read_text(encoding="utf-8"))
+            
+        self.update()
+        if hasattr(self, "lib_grid"):
+            self.lib_grid.viewport().update()
+        if hasattr(self, "fav_grid"):
+            self.fav_grid.viewport().update()

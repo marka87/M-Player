@@ -171,6 +171,35 @@ def test_full_ui():
         # Check Context Menu & Explorer Reveal
         win._show_in_explorer(drop_file)
 
+        # Check Sidebar Mini-Card (idle fallback state)
+        assert hasattr(win, "sidebar_mini_card")
+        assert win.sb_stats_box.isVisible()
+        assert not win.sb_track_box.isVisible()
+
+        # Play a song and verify Sidebar Mini-Card switches to track state
+        win.play(win.lib_model.rows[0], 0, win.lib_model.rows)
+        assert win.sb_track_box.isVisible()
+        assert not win.sb_stats_box.isVisible()
+        assert win.sb_title.text() != ""
+
+        # Test GridCardDelegate painting directly with QPainter (must not raise exceptions)
+        from PySide6.QtGui import QPainter, QPixmap
+        from PySide6.QtWidgets import QStyleOptionViewItem
+        delegate = win.lib_grid.itemDelegate()
+        pix = QPixmap(200, 250)
+        painter = QPainter(pix)
+        opt = QStyleOptionViewItem()
+        opt.rect = win.lib_grid.visualItemRect(win.lib_grid.item(0))
+        opt.widget = win.lib_grid
+        delegate.paint(painter, opt, win.lib_grid.model().index(0, 0))
+        painter.end()
+
+        # Check Theme switching for all 3 themes (Light, Winamp, Dark)
+        assert hasattr(win, "theme_combo")
+        for theme_idx, expected_theme in [(1, "light.qss"), (2, "winamp.qss"), (0, "dark.qss")]:
+            win.theme_combo.setCurrentIndex(theme_idx)
+            assert win.settings.get("theme") == expected_theme
+
         win.close()
         print("All UI tests passed successfully!")
 
