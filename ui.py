@@ -1113,13 +1113,18 @@ class MusicWindow(QMainWindow):
         if track:
             self.sb_stats_box.hide()
             self.sb_track_box.show()
-            t_title = track.get("title", "") if hasattr(track, "get") else getattr(track, "title", "")
-            t_artist = track.get("artist", "") if hasattr(track, "get") else getattr(track, "artist", "")
-            f_path = track.get("file_path", "") if hasattr(track, "get") else getattr(track, "file_path", "")
-            fav = track.get("favorite", 0) if hasattr(track, "get") else getattr(track, "favorite", 0)
+            t_title = track["title"] if hasattr(track, "keys") else (track.get("title", "") if isinstance(track, dict) else getattr(track, "title", ""))
+            t_artist = track["artist"] if hasattr(track, "keys") else (track.get("artist", "") if isinstance(track, dict) else getattr(track, "artist", ""))
+            f_path = track["file_path"] if hasattr(track, "keys") else (track.get("file_path", "") if isinstance(track, dict) else getattr(track, "file_path", ""))
+            fav = track["favorite"] if hasattr(track, "keys") and "favorite" in track.keys() else (track.get("favorite", 0) if isinstance(track, dict) else getattr(track, "favorite", 0))
+
+            if not t_title and f_path:
+                t_title = Path(f_path).stem
+            if not t_artist:
+                t_artist = "Unbekannter Interpret"
 
             self.sb_title.setText(t_title or "Unbekannter Titel")
-            self.sb_artist.setText(t_artist or "Unbekannter Interpret")
+            self.sb_artist.setText(t_artist)
             self.sb_cover.setPixmap(get_cover_pixmap(f_path, 48))
             self.sb_fav_btn.setIcon(get_icon("heart-filled" if fav else "heart"))
         else:
@@ -2231,25 +2236,19 @@ class MusicWindow(QMainWindow):
         self.now_title = QLabel("Kein Song ausgewählt")
         self.now_title.setStyleSheet("font-weight: 700; color: #F4F4F4; font-size: 13px;")
         
-        from PySide6.QtWidgets import QSizePolicy
-        self.now_title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-        
         self.now_artist = QLabel("Wähle einen Song aus der Bibliothek")
         self.now_artist.setObjectName("secondary")
         self.now_artist.setStyleSheet("font-size: 11px;")
-        self.now_artist.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         
         self.now_audio_info = QLabel("320 kbps | 44.1 kHz | Stereo")
         self.now_audio_info.setStyleSheet("color: #3DDC63; font-family: monospace; font-size: 10px;")
-        self.now_audio_info.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.now_audio_info.hide()
         
         meta_box.addWidget(self.now_title)
         meta_box.addWidget(self.now_artist)
         meta_box.addWidget(self.now_audio_info)
         
-        left.addLayout(meta_box)
-        left.addStretch()
+        left.addLayout(meta_box, 1)
 
         # Quick action buttons in mini player (reduced to just Favorite)
         self.bar_fav_btn = self._button("", self._toggle_current_fav, obj_name="playerBtn", icon=get_icon("heart"), icon_size=QSize(18, 18))
@@ -2708,17 +2707,22 @@ class MusicWindow(QMainWindow):
         )
         self.current_track = track
 
-        t_title = track["title"] if hasattr(track, "keys") else getattr(track, "title", "")
-        t_artist = track["artist"] if hasattr(track, "keys") else getattr(track, "artist", "")
-        f_path = track["file_path"] if hasattr(track, "keys") else getattr(track, "file_path", "")
+        t_title = track["title"] if hasattr(track, "keys") else (track.get("title", "") if isinstance(track, dict) else getattr(track, "title", ""))
+        t_artist = track["artist"] if hasattr(track, "keys") else (track.get("artist", "") if isinstance(track, dict) else getattr(track, "artist", ""))
+        f_path = track["file_path"] if hasattr(track, "keys") else (track.get("file_path", "") if isinstance(track, dict) else getattr(track, "file_path", ""))
         coll = track["collection"] if hasattr(track, "keys") and "collection" in track.keys() else getattr(track, "collection", "")
         fav = track["favorite"] if hasattr(track, "keys") and "favorite" in track.keys() else getattr(track, "favorite", 0)
         t_id = track["id"] if hasattr(track, "keys") and "id" in track.keys() else getattr(track, "id", None)
 
+        if not t_title and f_path:
+            t_title = Path(f_path).stem
+        if not t_artist:
+            t_artist = "Unbekannter Interpret"
+
         if t_id:
             self.db.increment_play_count(t_id)
 
-        self.now_title.setText(t_title)
+        self.now_title.setText(t_title or "Unbekannter Titel")
         self.now_artist.setText(t_artist)
         self.bar_cover.setPixmap(get_cover_pixmap(f_path, 56))
         
