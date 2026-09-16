@@ -18,13 +18,15 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComb
                              QFrame, QHBoxLayout, QHeaderView, QInputDialog,
                              QLabel, QLineEdit, QListWidget, QListWidgetItem,
                              QMainWindow, QMenu, QMessageBox, QProgressBar,
-                             QPushButton, QScrollArea, QSlider, QStackedWidget, QTableView,
-                             QVBoxLayout, QWidget)
+                             QPushButton, QScrollArea, QSlider, QStackedWidget, QSystemTrayIcon,
+                             QTableView, QVBoxLayout, QWidget)
+import subprocess
+import sys
 import urllib.parse
 
 from database import MusicDatabase
 from downloader import DownloadCancelled, MusicDownloader
-from metadata import TrackMetadata, safe_name
+from metadata import TrackMetadata, safe_name, read_audio_tags
 
 
 class ClickableSlider(QSlider):
@@ -708,6 +710,10 @@ class MusicWindow(QMainWindow):
         ico_file = ICON_DIR.parent / "icon.ico"
         if ico_file.exists():
             self.setWindowIcon(QIcon(str(ico_file)))
+        self.setAcceptDrops(True)
+        self.tray_icon = QSystemTrayIcon(self.windowIcon(), self)
+        if QSystemTrayIcon.isSystemTrayAvailable():
+            self.tray_icon.show()
         self.resize(1360, 860)
         self.setMinimumSize(1040, 680)
 
@@ -742,6 +748,73 @@ class MusicWindow(QMainWindow):
         elif obj_name:
             btn.setObjectName(obj_name)
         return btn
+
+    def notify(self, title: str, body: str):
+        try:
+            import win11toast
+            win11toast.toast(title, body)
+            return
+        except Exception:
+            pass
+        if hasattr(self, "tray_icon") and self.tray_icon:
+            self.tray_icon.showMessage(title, body, QSystemTrayIcon.Information, 4000)
+
+    def _show_in_explorer(self, file_path: Path):
+        if not file_path.exists():
+            QMessageBox.warning(self, "Datei fehlt", f"Die Datei '{file_path.name}' wurde nicht gefunden.")
+            return
+        if sys.platform == "win32":
+            subprocess.run(["explorer", f"/select,{file_path}"], check=False)
+        else:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(file_path.parent)))
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        urls = event.mimeData().urls()
+        paths = [Path(u.toLocalFile()) for u in urls if u.toLocalFile()]
+        if paths:
+            event.acceptProposedAction()
+            self.import_dropped_files(paths)
+
+    def import_dropped_files(self, paths: list[Path]) -> int:
+        audio_exts = {".mp3", ".flac", ".m4a", ".wav"}
+        files_to_import: list[Path] = []
+        for p in paths:
+            if p.is_dir():
+                for f in p.rglob("*"):
+                    if f.is_file() and f.suffix.lower() in audio_exts:
+                        files_to_import.append(f)
+            elif p.is_file() and p.suffix.lower() in audio_exts:
+                files_to_import.append(p)
+
+        if not files_to_import:
+            return 0
+
+        count = 0
+        for fp in files_to_import:
+            track = read_audio_tags(fp)
+            self.db.upsert(track, fp, duration=track.duration, bitrate=track.bitrate)
+            if track.collection and track.collection not in ("Einzeltitel", "Single", self.music_root.name, ".covers"):
+                t_rows = [t for t in self.db.tracks() if t["file_path"] == str(fp)]
+                if t_rows:
+                    self.db.add_to_playlist(track.collection, t_rows[0]["id"])
+            count += 1
+
+        self.refresh_library()
+        self.refresh_dashboard()
+        self.notify("Import abgeschlossen", f"{count} Song(s) erfolgreich zur Bibliothek hinzugefügt.")
+        return count
 
     def _build_ui(self):
         root = QWidget()
@@ -811,6 +884,17 @@ class MusicWindow(QMainWindow):
             self.nav.addItem(item)
         self.nav.currentRowChanged.connect(self.show_page)
         sidebar_layout.addWidget(self.nav, 1)
+
+        try:
+            from main import __version__
+        except ImportError:
+            __version__ = "v1.0.0"
+
+        self.version_lbl = QLabel(__version__)
+        self.version_lbl.setStyleSheet("color: #6a7282; font-size: 11px;")
+        self.version_lbl.setAlignment(Qt.AlignCenter)
+        sidebar_layout.addWidget(self.version_lbl)
+
         body.addWidget(sidebar_frame)
 
         # Right Content Area
@@ -1420,6 +1504,15 @@ class MusicWindow(QMainWindow):
         grid.itemDoubleClicked.connect(lambda item, m=model: self._on_grid_double_click(item, m))
         grid.itemClicked.connect(lambda item: self.show_track_details(item.data(Qt.UserRole)))
 
+        grid.setAcceptDrops(True)
+        grid.dragEnterEvent = self.dragEnterEvent
+        grid.dragMoveEvent = self.dragMoveEvent
+        grid.dropEvent = self.dropEvent
+        grid.viewport().setAcceptDrops(True)
+        grid.viewport().dragEnterEvent = self.dragEnterEvent
+        grid.viewport().dragMoveEvent = self.dragMoveEvent
+        grid.viewport().dropEvent = self.dropEvent
+
         view_stack.addWidget(table)
         view_stack.addWidget(grid)
 
@@ -1587,6 +1680,15 @@ class MusicWindow(QMainWindow):
         table.setColumnWidth(7, 85)
         header.setSectionResizeMode(8, QHeaderView.Fixed)
         table.setColumnWidth(8, 105)
+
+        table.setAcceptDrops(True)
+        table.dragEnterEvent = self.dragEnterEvent
+        table.dragMoveEvent = self.dragMoveEvent
+        table.dropEvent = self.dropEvent
+        table.viewport().setAcceptDrops(True)
+        table.viewport().dragEnterEvent = self.dragEnterEvent
+        table.viewport().dragMoveEvent = self.dragMoveEvent
+        table.viewport().dropEvent = self.dropEvent
         return table
 
     def _on_header_clicked(self, col: int, model: TrackModel, table: QTableView | None = None):
@@ -1881,6 +1983,18 @@ class MusicWindow(QMainWindow):
         layout.addLayout(btn_row)
 
         layout.addStretch()
+
+        try:
+            from main import __version__
+        except ImportError:
+            __version__ = "v1.0.0"
+
+        footer_lbl = QLabel(f"M-Player {__version__} • Made by marka87")
+        footer_lbl.setObjectName("secondary")
+        footer_lbl.setStyleSheet("font-size: 11px; color: #6a7282;")
+        footer_lbl.setAlignment(Qt.AlignCenter)
+        layout.addWidget(footer_lbl)
+
         scroll.setWidget(content)
         return scroll
 
@@ -2063,6 +2177,9 @@ class MusicWindow(QMainWindow):
         self.cancelled.clear()
         self.resumed.set()
         self.paused = False
+        self._batch_total = len(items)
+        self._batch_remaining = len(items)
+        self._batch_single_title = items[0][1].title if len(items) == 1 else None
         self.nav.setCurrentRow(5)
 
         for step, (row_idx, track) in enumerate(items, 1):
@@ -2095,6 +2212,18 @@ class MusicWindow(QMainWindow):
         self.update_queue_stats()
         self.refresh_library()
         self.refresh_dashboard()
+
+        if status == "Fertig":
+            remaining = getattr(self, "_batch_remaining", 1) - 1
+            self._batch_remaining = remaining
+            total = getattr(self, "_batch_total", 1)
+            if total == 1:
+                title = getattr(self, "_batch_single_title", None)
+                if not title and 0 <= row_idx < len(self.pre_model.rows):
+                    title = getattr(self.pre_model.rows[row_idx], "title", "Song")
+                self.notify("Download abgeschlossen", f"'{title}' wurde erfolgreich heruntergeladen." if title else "Song erfolgreich heruntergeladen.")
+            elif remaining <= 0:
+                self.notify("Download abgeschlossen", f"{total} Songs erfolgreich heruntergeladen.")
 
     def pause_download(self):
         self.paused = not self.paused
@@ -2493,26 +2622,28 @@ class MusicWindow(QMainWindow):
         if not idx.isValid():
             return
         track = model.rows[idx.row()]
+        file_path = Path(track["file_path"])
         menu = QMenu(self)
 
         menu.addAction(get_icon("play"), "Abspielen", lambda: self.play(track, idx.row(), model.rows))
-        menu.addAction(get_icon("tag"), "Details anzeigen", lambda: self.show_track_details(track))
-        file_path = Path(track["file_path"])
-        menu.addAction(get_icon("folder"), "Songordner öffnen", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(file_path.parent))))
-        coll = track["collection"] if hasattr(track, "keys") and "collection" in track.keys() else getattr(track, "collection", "")
-        if coll and coll not in ("Einzeltitel", "Single"):
-            p_dir = self.music_root / safe_name(coll, "playlist")
-            menu.addAction(get_icon("folder"), "Playlistordner öffnen", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(p_dir))))
 
-        menu.addAction(get_icon("heart"), "Favorit umschalten", lambda: (self.db.toggle_favorite(track["id"]), self.refresh_library()))
-        menu.addAction(get_icon("covers"), "Albumcover aktualisieren", lambda: self._refresh_single_cover(track))
-        menu.addAction(get_icon("edit"), "Tags bearbeiten", lambda: self._edit_tags(track))
-        menu.addAction(get_icon("trash"), "Song löschen", lambda: self._prompt_delete_track(track))
-        menu.addAction(get_icon("download"), "Neu herunterladen", lambda: self._re_download(track))
-
-        pl_menu = menu.addMenu(get_icon("playlist"), "Zu Playlist hinzufügen")
+        pl_menu = menu.addMenu(get_icon("playlist"), "Zu Playlist hinzufügen …")
         for pl_name in self.db.playlist_names():
-            pl_menu.addAction(pl_name, lambda n=pl_name, tid=track["id"]: self.db.add_to_playlist(n, tid))
+            pl_menu.addAction(get_icon("playlist"), pl_name, lambda n=pl_name, tid=track["id"]: (
+                self.db.add_to_playlist(n, tid),
+                self.notify("Playlist", f"Song zu '{n}' hinzugefügt.")
+            ))
+
+        menu.addAction(get_icon("folder"), "Im Datei-Explorer anzeigen", lambda: self._show_in_explorer(file_path))
+
+        menu.addSeparator()
+        menu.addAction(get_icon("tag"), "Details anzeigen", lambda: self.show_track_details(track))
+        menu.addAction(get_icon("heart"), "Favorit umschalten", lambda: (self.db.toggle_favorite(track["id"]), self.refresh_library()))
+        menu.addAction(get_icon("edit"), "Tags bearbeiten", lambda: self._edit_tags(track))
+        menu.addAction(get_icon("covers"), "Albumcover aktualisieren", lambda: self._refresh_single_cover(track))
+
+        menu.addSeparator()
+        menu.addAction(get_icon("trash"), "Löschen", lambda: self._prompt_delete_track(track))
 
         menu.exec(table.viewport().mapToGlobal(point))
 

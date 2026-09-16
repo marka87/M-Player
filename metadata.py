@@ -104,3 +104,69 @@ def find_or_fetch_cover(artist: str, album: str, music_root: Path, file_path: Pa
         if cache_file.exists():
             return cache_file
     return None
+
+
+def read_audio_tags(file_path: Path) -> TrackMetadata:
+    """Read metadata tags, duration, and bitrate from MP3, FLAC, M4A, WAV."""
+    title = file_path.stem
+    artist = "Unbekannter Artist"
+    album = file_path.parent.name if file_path.parent else "Unbekanntes Album"
+    year = ""
+    genre = ""
+    duration = 0.0
+    bitrate = 320
+
+    try:
+        from mutagen import File as MutagenFile
+        audio = MutagenFile(file_path)
+        if audio:
+            if hasattr(audio, "info") and audio.info:
+                duration = float(getattr(audio.info, "length", 0.0))
+                raw_br = getattr(audio.info, "bitrate", 0)
+                if raw_br:
+                    bitrate = int(raw_br / 1000)
+
+            tags = audio.tags or {}
+
+            def get_val(*keys):
+                for k in keys:
+                    v = tags.get(k)
+                    if v is not None:
+                        if isinstance(v, list) and v:
+                            return str(v[0]).strip()
+                        if hasattr(v, "text") and v.text:
+                            return str(v.text[0]).strip()
+                        s = str(v).strip()
+                        if s:
+                            return s
+                return None
+
+            t = get_val("TIT2", "title", "\xa9nam")
+            if t:
+                title = t
+            a = get_val("TPE1", "artist", "\xa9ART")
+            if a:
+                artist = a
+            alb = get_val("TALB", "album", "\xa9alb")
+            if alb:
+                album = alb
+            y = get_val("TDRC", "date", "\xa9day")
+            if y:
+                year = str(y)[:4]
+            g = get_val("TCON", "genre", "\xa9gen")
+            if g:
+                genre = g
+    except Exception:
+        pass
+
+    collection = file_path.parent.name if file_path.parent else "Einzeltitel"
+    return TrackMetadata(
+        title=title,
+        artist=artist,
+        album=album,
+        year=year,
+        genre=genre,
+        collection=collection,
+        duration=duration,
+        bitrate=bitrate
+    )

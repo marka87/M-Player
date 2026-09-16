@@ -369,21 +369,34 @@ QFrame#playerBar {
    9. MENUS & DIALOGS
    ========================================================= */
 QMenu {
-    background-color: #1C2026;
-    border: 1px solid #262B34;
-    border-radius: 12px;
+    background-color: #1A1D24;
+    border: 1px solid #2D333F;
+    border-radius: 10px;
     padding: 6px;
 }
 
 QMenu::item {
     color: #F4F4F4;
-    padding: 8px 24px;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 7px 24px 7px 10px;
     border-radius: 6px;
+    margin: 2px 4px;
 }
 
 QMenu::item:selected {
-    background-color: #252B34;
-    color: #3DDC63;
+    background-color: #262D38;
+    color: #1DB954;
+}
+
+QMenu::icon {
+    padding-left: 6px;
+}
+
+QMenu::separator {
+    height: 1px;
+    background-color: #282E39;
+    margin: 4px 6px;
 }
 
 QDialog {

@@ -155,6 +155,22 @@ def test_full_ui():
         assert win.lib_list_btn.property("active") == "true"
         assert win.lib_grid_btn.property("active") == "false"
 
+        # Check Drag & Drop acceptance and import
+        assert win.acceptDrops()
+        assert win.lib_table.acceptDrops()
+        drop_file = root / "Artist C" / "Dropped Track.mp3"
+        drop_file.parent.mkdir(parents=True, exist_ok=True)
+        drop_file.write_bytes(b"\xff\xfb\x90\x44" + b"\x00" * 200)
+        imported = win.import_dropped_files([drop_file])
+        assert imported == 1
+        assert any(t["title"] == "Dropped Track" for t in win.db.tracks())
+
+        # Check Toast Notification
+        win.notify("Download abgeschlossen", "'Test Song' wurde erfolgreich heruntergeladen.")
+
+        # Check Context Menu & Explorer Reveal
+        win._show_in_explorer(drop_file)
+
         win.close()
         print("All UI tests passed successfully!")
 
