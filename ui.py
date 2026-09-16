@@ -1946,6 +1946,23 @@ class MusicWindow(QMainWindow):
 
         layout.addLayout(drop_row)
 
+        theme_row = QHBoxLayout()
+        theme_row.addWidget(QLabel("Design / Skin"))
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(["Modern Dark (Standard)", "Modern Light", "Winamp Classic"])
+        
+        current_theme = self.settings.get("theme", "dark.qss")
+        if current_theme == "light.qss":
+            self.theme_combo.setCurrentIndex(1)
+        elif current_theme == "winamp.qss":
+            self.theme_combo.setCurrentIndex(2)
+        else:
+            self.theme_combo.setCurrentIndex(0)
+            
+        self.theme_combo.currentIndexChanged.connect(self.apply_theme_from_ui)
+        theme_row.addWidget(self.theme_combo, 1)
+        layout.addLayout(theme_row)
+
         # 5 Settings Checkboxes (Priority 8)
         chk_group = QFrame()
         chk_group.setObjectName("metaBox")
@@ -2013,8 +2030,8 @@ class MusicWindow(QMainWindow):
         left.setSpacing(12)
 
         self.bar_cover = QLabel()
-        self.bar_cover.setFixedSize(48, 48)
-        self.bar_cover.setPixmap(get_cover_pixmap("", 48))
+        self.bar_cover.setFixedSize(72, 72)
+        self.bar_cover.setPixmap(get_cover_pixmap("", 72))
         left.addWidget(self.bar_cover)
 
         meta_box = QVBoxLayout()
@@ -2025,8 +2042,13 @@ class MusicWindow(QMainWindow):
         self.now_artist = QLabel("Wähle einen Song aus der Bibliothek")
         self.now_artist.setObjectName("secondary")
         self.now_artist.setStyleSheet("font-size: 11px;")
+        self.now_audio_info = QLabel("320 kbps | 44.1 kHz | Stereo")
+        self.now_audio_info.setStyleSheet("color: #00FF00; font-family: monospace; font-size: 10px;")
+        self.now_audio_info.hide()
+        
         meta_box.addWidget(self.now_title)
         meta_box.addWidget(self.now_artist)
+        meta_box.addWidget(self.now_audio_info)
 
         self.bar_pl_badge = QLabel("")
         self.bar_pl_badge.setObjectName("metaBadge")
@@ -2093,6 +2115,11 @@ class MusicWindow(QMainWindow):
         timeline.addWidget(self.timeline_slider, 1)
         timeline.addWidget(self.time_total)
         center.addLayout(timeline)
+        
+        self.visualizer_lbl = QLabel("||||||| VISUALIZER |||||||")
+        self.visualizer_lbl.setStyleSheet("color: #00FF00; font-family: monospace; font-size: 10px; font-weight: bold;")
+        self.visualizer_lbl.setAlignment(Qt.AlignCenter)
+        center.addWidget(self.visualizer_lbl)
 
         layout.addWidget(center_widget, 1)
 
@@ -2508,7 +2535,10 @@ class MusicWindow(QMainWindow):
 
         self.now_title.setText(t_title)
         self.now_artist.setText(t_artist)
-        self.bar_cover.setPixmap(get_cover_pixmap(f_path, 48))
+        self.bar_cover.setPixmap(get_cover_pixmap(f_path, 72))
+        
+        # Audio Info (Mock / statisch für Performance nach Ponytail)
+        self.now_audio_info.show()
 
         if hasattr(self, "bar_fav_btn"):
             self.bar_fav_btn.setIcon(get_icon("heart-filled" if fav else "heart"))
@@ -2722,3 +2752,20 @@ class MusicWindow(QMainWindow):
         self.pool.setMaxThreadCount(int(self.parallel.currentText()))
         self.refresh_dashboard()
         QMessageBox.information(self, "Gespeichert", "Einstellungen erfolgreich gespeichert.")
+
+    def apply_theme_from_ui(self):
+        idx = self.theme_combo.currentIndex()
+        if idx == 1:
+            theme_file = "light.qss"
+        elif idx == 2:
+            theme_file = "winamp.qss"
+        else:
+            theme_file = "dark.qss"
+            
+        self.db.set_setting("theme", theme_file)
+        self.settings["theme"] = theme_file
+        
+        base = Path(__file__).resolve().parent
+        theme_path = base / "assets" / "themes" / theme_file
+        if theme_path.exists():
+            QApplication.instance().setStyleSheet(theme_path.read_text(encoding="utf-8"))

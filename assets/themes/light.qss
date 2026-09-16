@@ -1,0 +1,20 @@
+QMainWindow, QWidget#centralWidget { background-color: #F4F6F8; color: #121212; font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; font-size: 14px; }
+QFrame#sidebarFrame { background-color: #FFFFFF; border-right: 1px solid #E5E7EB; min-width: 240px; max-width: 240px; }
+QListWidget#sidebarNav { background-color: transparent; border: none; outline: none; padding-top: 8px; }
+QListWidget#sidebarNav::item { color: #4B5563; min-height: 48px; max-height: 48px; padding-left: 18px; margin: 3px 8px; border-radius: 10px; font-size: 15px; font-weight: 600; text-align: left; border-left: 4px solid transparent; }
+QListWidget#sidebarNav::item:hover { background-color: #F3F4F6; color: #111827; }
+QListWidget#sidebarNav::item:selected { background-color: #ECFDF5; color: #10B981; font-weight: 700; border-left: 4px solid #10B981; }
+QTableView { background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 14px; gridline-color: transparent; selection-background-color: #ECFDF5; selection-color: #111827; outline: none; }
+QTableView::item { background-color: #FFFFFF; border-bottom: 1px solid #F3F4F6; padding: 4px 8px; color: #111827; }
+QTableView::item:hover { background-color: #F9FAFB; }
+QTableView::item:selected { background-color: #ECFDF5; color: #111827; }
+QHeaderView::section { background-color: #FFFFFF; color: #6B7280; border: none; border-bottom: 1px solid #E5E7EB; padding: 6px 10px; min-height: 36px; font-weight: 600; font-size: 12px; }
+QPushButton { background-color: #FFFFFF; border: 1px solid #D1D5DB; border-radius: 8px; min-height: 38px; padding: 8px 16px; color: #374151; font-size: 13px; font-weight: 500; }
+QPushButton:hover { background-color: #F9FAFB; border-color: #9CA3AF; color: #111827; }
+QPushButton#accent { background-color: #10B981; border: none; border-radius: 8px; color: #FFFFFF; font-size: 14px; font-weight: 600; min-height: 40px; padding: 8px 20px; }
+QPushButton#accent:hover { background-color: #059669; }
+QFrame#card, QFrame#toolbarFrame, QFrame#detailsPanel, QFrame#playerBar { background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 14px; }
+QLineEdit, QComboBox { background-color: #FFFFFF; border: 1px solid #D1D5DB; border-radius: 8px; min-height: 40px; padding: 10px 14px; color: #111827; font-size: 14px; }
+QLabel#secondary { color: #6B7280; }
+QCheckBox { color: #374151; }
+
