@@ -89,6 +89,9 @@ class GridCardDelegate(QStyledItemDelegate):
             
         painter.restore()
 
+    def sizeHint(self, option, index):
+        return QSize(170, 210)
+
 
 def time_text(seconds: float) -> str:
     seconds = int(seconds or 0)
@@ -989,7 +992,7 @@ class MusicWindow(QMainWindow):
     def _build_details_panel(self) -> QWidget:
         panel = QFrame()
         panel.setObjectName("detailsPanel")
-        panel.setFixedWidth(300)
+        panel.setFixedWidth(240)
         
         main_layout = QVBoxLayout(panel)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -1001,18 +1004,15 @@ class MusicWindow(QMainWindow):
         
         content = QWidget()
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(12)
 
-        # Top Header
+        # Top Header (Shrinked)
         hdr = QHBoxLayout()
-        hdr_lbl = QLabel("Song-Details")
-        hdr_lbl.setStyleSheet("font-size: 15px; font-weight: 700; color: #F4F4F4;")
         close_btn = QPushButton("✕")
-        close_btn.setFixedSize(28, 28)
+        close_btn.setFixedSize(24, 24)
         close_btn.setObjectName("closeBtn")
         close_btn.clicked.connect(lambda: self.details_panel.hide())
-        hdr.addWidget(hdr_lbl)
         hdr.addStretch()
         hdr.addWidget(close_btn)
         layout.addLayout(hdr)
@@ -1030,7 +1030,7 @@ class MusicWindow(QMainWindow):
         # Title & Artist
         self.detail_title = QLabel("Kein Song ausgewählt")
         self.detail_title.setWordWrap(True)
-        self.detail_title.setStyleSheet("font-size: 15px; font-weight: 700; color: #F4F4F4;")
+        self.detail_title.setStyleSheet("font-size: 14px; font-weight: 700; color: #F4F4F4;")
         self.detail_artist = QLabel("")
         self.detail_artist.setWordWrap(True)
         self.detail_artist.setStyleSheet("font-size: 13px; font-weight: 600; color: #3DDC63;")
@@ -1560,7 +1560,6 @@ class MusicWindow(QMainWindow):
         grid = QListWidget()
         grid.setViewMode(QListWidget.IconMode)
         grid.setIconSize(QSize(140, 140))
-        grid.setGridSize(QSize(186, 226))
         grid.setResizeMode(QListWidget.Adjust)
         grid.setSpacing(0)
         grid.setViewportMargins(8, 8, 8, 8)
@@ -2094,8 +2093,8 @@ class MusicWindow(QMainWindow):
         left.setSpacing(12)
 
         self.bar_cover = QLabel()
-        self.bar_cover.setFixedSize(72, 72)
-        self.bar_cover.setPixmap(get_cover_pixmap("", 72))
+        self.bar_cover.setFixedSize(56, 56)
+        self.bar_cover.setPixmap(get_cover_pixmap("", 56))
         left.addWidget(self.bar_cover)
 
         meta_box = QVBoxLayout()
@@ -2120,25 +2119,15 @@ class MusicWindow(QMainWindow):
         meta_box.addWidget(self.now_title)
         meta_box.addWidget(self.now_artist)
         meta_box.addWidget(self.now_audio_info)
-
-        self.bar_pl_badge = QLabel("")
-        self.bar_pl_badge.setObjectName("metaBadge")
-        self.bar_pl_badge.hide()
-        meta_box.addWidget(self.bar_pl_badge)
+        
         left.addLayout(meta_box)
+        left.addStretch()
 
-        # Quick action buttons in mini player
+        # Quick action buttons in mini player (reduced to just Favorite)
         self.bar_fav_btn = self._button("", self._toggle_current_fav, obj_name="playerBtn", icon=get_icon("heart"), icon_size=QSize(18, 18))
         self.bar_fav_btn.setToolTip("Zu Favoriten hinzufügen")
-        self.bar_folder_btn = self._button("", self._open_current_folder, obj_name="playerBtn", icon=get_icon("folder"), icon_size=QSize(18, 18))
-        self.bar_folder_btn.setToolTip("Song-Ordner öffnen")
-        self.bar_jump_pl_btn = self._button("", self._jump_to_current_playlist, obj_name="playerBtn", icon=get_icon("playlist"), icon_size=QSize(18, 18))
-        self.bar_jump_pl_btn.setToolTip("Zu dieser Playlist springen")
-        self.bar_jump_pl_btn.hide()
 
         left.addWidget(self.bar_fav_btn)
-        left.addWidget(self.bar_folder_btn)
-        left.addWidget(self.bar_jump_pl_btn)
         layout.addWidget(left_widget, 1)
 
         # Center Zone: Playback Controls & Timeline
@@ -2618,11 +2607,10 @@ class MusicWindow(QMainWindow):
         if coll and coll not in ("Einzeltitel", "Single") and hasattr(self, "bar_pl_badge"):
             self.bar_pl_badge.setText(coll)
             self.bar_pl_badge.show()
-            self.bar_jump_pl_btn.show()
             self.current_playlist_name = coll
         elif hasattr(self, "bar_pl_badge"):
             self.bar_pl_badge.hide()
-            self.bar_jump_pl_btn.hide()
+            self.current_playlist_name = ""
             self.current_playlist_name = ""
 
         if hasattr(self, "details_panel") and self.details_panel.isVisible():

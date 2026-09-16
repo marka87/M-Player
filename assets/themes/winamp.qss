@@ -4,15 +4,15 @@ QMainWindow, QWidget#centralWidget {
     background-color: #0B0D11; 
     color: #FFFFFF; 
     font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; 
-    font-size: 14px; 
+    font-size: 13px; 
 }
 
 /* SIDEBAR */
 QFrame#sidebarFrame { 
     background-color: rgba(21, 26, 33, 180); /* Leichte Transparenz */
     border-right: 1px solid #262E38; 
-    min-width: 250px; 
-    max-width: 250px; 
+    min-width: 200px; 
+    max-width: 200px; 
 }
 
 QListWidget#sidebarNav { 
@@ -26,7 +26,7 @@ QListWidget#sidebarNav::item {
     min-height: 48px; max-height: 48px; 
     padding-left: 12px; margin: 4px 8px; 
     border-radius: 8px; 
-    font-size: 15px; font-weight: 600; 
+    font-size: 14px; font-weight: 600; 
 }
 QListWidget#sidebarNav::item:hover { 
     background-color: #20262F; 
@@ -77,7 +77,7 @@ QPushButton {
     border: none; 
     border-radius: 8px; 
     min-height: 36px; padding: 6px 14px; 
-    color: #FFFFFF; font-size: 14px; font-weight: 500; 
+    color: #FFFFFF; font-size: 13px; font-weight: 500; 
 }
 QPushButton:hover { 
     background-color: #20262F; 
