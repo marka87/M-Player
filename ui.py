@@ -532,6 +532,7 @@ class SearchTask(QRunnable):
                 "no_warnings": True,
                 "playliststart": self.start,
                 "playlistend": end,
+                "extractor_args": {"youtube": {"player_client": ["android", "ios", "mweb"]}},
             }
             if self.filter_type == "playlist":
                 target = f"https://www.youtube.com/results?search_query={urllib.parse.quote(self.query)}&sp=EgIQAw%253D%253D"

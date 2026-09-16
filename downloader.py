@@ -84,7 +84,12 @@ class MusicDownloader:
         return completed, errors
 
     def _youtube_sources(self, url: str) -> list[TrackMetadata]:
-        options = {"quiet": True, "extract_flat": True, "skip_download": True}
+        options = {
+            "quiet": True,
+            "extract_flat": True,
+            "skip_download": True,
+            "extractor_args": {"youtube": {"player_client": ["android", "ios", "mweb"]}},
+        }
         try:
             with yt_dlp.YoutubeDL(options) as ydl:
                 info = ydl.extract_info(url, download=False)
@@ -225,6 +230,7 @@ class MusicDownloader:
                 "progress_hooks": [hook],
                 "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "320"}],
                 "postprocessor_args": {"FFmpegExtractAudio": ["-codec:a", "libmp3lame", "-b:a", "320k"]},
+                "extractor_args": {"youtube": {"player_client": ["android", "ios", "mweb"]}},
             }
             ffmpeg_path = shutil.which("ffmpeg")
             if ffmpeg_path:
@@ -313,25 +319,97 @@ class MusicDownloader:
             count += 1
 
 
+class _SilentLogger:
+    def debug(self, msg): pass
+    def warning(self, msg): pass
+    def error(self, msg): pass
+
+
+def _extract_stream_url(youtube_url: str) -> str | None:
+    if not youtube_url:
+        return None
+
+    silent = _SilentLogger()
+
+    # Multi-client fallback strategy to bypass YouTube bot detection
+    client_chains = [
+        ["android", "ios"],
+        ["mweb"],
+        ["web"],
+    ]
+
+    cookie_opts = {}
+    for cand in [Path("cookies.txt"), Path.home() / "cookies.txt"]:
+        if cand.is_file():
+            cookie_opts["cookiefile"] = str(cand)
+            break
+
+    for clients in client_chains:
+        opts = {
+            "format": "ba/bestaudio/best",
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "logger": silent,
+            "extractor_args": {"youtube": {"player_client": clients}},
+            **cookie_opts,
+        }
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(youtube_url, download=False)
+                if not info:
+                    continue
+                if "entries" in info and info["entries"]:
+                    info = info["entries"][0]
+                stream_url = info.get("url")
+                if not stream_url and "formats" in info:
+                    audios = [f for f in info["formats"] if f.get("acodec") != "none" and f.get("url")]
+                    if audios:
+                        stream_url = audios[-1].get("url")
+                if stream_url:
+                    return stream_url
+        except Exception:
+            continue
+
+    # Fallback to browser cookies if local extraction failed
+    if not cookie_opts:
+        for browser in ("firefox", "vivaldi", "chrome", "edge", "brave"):
+            try:
+                opts = {
+                    "format": "ba/bestaudio/best",
+                    "quiet": True,
+                    "no_warnings": True,
+                    "skip_download": True,
+                    "logger": silent,
+                    "cookiesfrombrowser": (browser,),
+                }
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(youtube_url, download=False)
+                    if not info:
+                        continue
+                    if "entries" in info and info["entries"]:
+                        info = info["entries"][0]
+                    stream_url = info.get("url")
+                    if not stream_url and "formats" in info:
+                        audios = [f for f in info["formats"] if f.get("acodec") != "none" and f.get("url")]
+                        if audios:
+                            stream_url = audios[-1].get("url")
+                    if stream_url:
+                        return stream_url
+            except Exception:
+                continue
+
+    return None
+
+
 @functools.lru_cache(maxsize=128)
 def get_stream_url(youtube_url: str) -> str | None:
     """Extract direct audio streaming URL via yt-dlp without downloading."""
-    if not youtube_url:
-        return None
-    opts = {
-        "format": "ba/bestaudio/best",
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-    }
-    try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(youtube_url, download=False)
-            if not info:
-                return None
-            if "entries" in info and info["entries"]:
-                info = info["entries"][0]
-            return info.get("url")
-    except Exception:
-        return None
+    url = _extract_stream_url(youtube_url)
+    if not url:
+        try:
+            get_stream_url.cache_clear()
+        except Exception:
+            pass
+    return url
 
