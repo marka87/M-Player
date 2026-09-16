@@ -54,6 +54,16 @@ def format_size(bytes_val: int | float) -> str:
     return f"{bytes_val:.1f} TB"
 
 
+ICON_DIR = Path(__file__).resolve().parent / "assets" / "icons"
+
+
+def get_icon(name: str) -> QIcon:
+    svg_path = ICON_DIR / f"{name}.svg"
+    if svg_path.is_file():
+        return QIcon(str(svg_path))
+    return QIcon()
+
+
 @functools.lru_cache(maxsize=600)
 def get_cover_pixmap(cover_source: str, size: int = 48) -> QPixmap:
     pix = QPixmap()
@@ -705,8 +715,12 @@ class MusicWindow(QMainWindow):
         self.refresh_playlists()
         self.update_queue_stats()
 
-    def _button(self, text, slot, accent=False, obj_name=""):
+    def _button(self, text, slot, accent=False, obj_name="", icon: QIcon | None = None, icon_size: QSize | None = None):
         btn = QPushButton(text)
+        if icon is not None and not icon.isNull():
+            btn.setIcon(icon)
+            if icon_size is not None:
+                btn.setIconSize(icon_size)
         btn.clicked.connect(slot)
         if accent:
             btn.setObjectName("accent")
@@ -729,7 +743,7 @@ class MusicWindow(QMainWindow):
         header.addWidget(title_lbl)
         header.addStretch()
 
-        self.top_refresh_btn = self._button("🔄 Bibliothek aktualisieren", self.run_sync_library, True)
+        self.top_refresh_btn = self._button("Bibliothek aktualisieren", self.run_sync_library, True, icon=get_icon("refresh"), icon_size=QSize(16, 16))
         self.top_refresh_btn.setShortcut("F5")
         self.top_refresh_btn.setToolTip("Musikordner vollständig scannen & synchronisieren (F5)")
         header.addWidget(self.top_refresh_btn)
@@ -738,7 +752,7 @@ class MusicWindow(QMainWindow):
         self.f5_shortcut = QShortcut(QKeySequence("F5"), self)
         self.f5_shortcut.activated.connect(self.run_sync_library)
 
-        header.addWidget(self._button("⚙ Einstellungen", lambda: self.show_page(6)))
+        header.addWidget(self._button("Einstellungen", lambda: self.show_page(6), icon=get_icon("settings"), icon_size=QSize(16, 16)))
         main_layout.addLayout(header)
 
         # 2. Main Area: Sidebar + Content Area + Collapsible Details Panel
@@ -756,16 +770,17 @@ class MusicWindow(QMainWindow):
         self.nav.setObjectName("sidebarNav")
         self.nav.setFixedWidth(240)
         self.nav.setSpacing(6)
+        self.nav.setIconSize(QSize(20, 20))
         nav_items = [
-            ("🎵   Downloader", 0),
-            ("🔍   Entdecken", 1),
-            ("📚   Bibliothek", 2),
-            ("❤️   Favoriten", 3),
-            ("📋   Playlists", 4),
-            ("⬇   Downloads", 5),
+            ("Downloader", "downloader", 0),
+            ("Entdecken", "compass", 1),
+            ("Bibliothek", "library", 2),
+            ("Favoriten", "heart", 3),
+            ("Playlists", "playlist", 4),
+            ("Downloads", "download", 5),
         ]
-        for title, _ in nav_items:
-            item = QListWidgetItem(title)
+        for title, icon_name, _ in nav_items:
+            item = QListWidgetItem(get_icon(icon_name), f"  {title}")
             item.setSizeHint(QSize(220, 50))
             self.nav.addItem(item)
         self.nav.currentRowChanged.connect(self.show_page)
@@ -884,11 +899,11 @@ class MusicWindow(QMainWindow):
         layout.addStretch()
 
         # Action buttons
-        self.detail_play_btn = self._button("▶ Abspielen", self._on_detail_play, True)
-        self.detail_fav_btn = self._button("❤️ Zu Favoriten", self._on_detail_fav)
-        self.detail_cover_btn = self._button("🖼 Cover aktualisieren", self._on_detail_update_cover)
-        self.detail_folder_btn = self._button("📂 Im Explorer anzeigen", self._on_detail_open_folder)
-        self.detail_del_btn = self._button("🗑 Löschen", self._on_detail_delete, obj_name="danger")
+        self.detail_play_btn = self._button("Abspielen", self._on_detail_play, True, icon=get_icon("play"), icon_size=QSize(16, 16))
+        self.detail_fav_btn = self._button("Zu Favoriten", self._on_detail_fav, icon=get_icon("heart"), icon_size=QSize(16, 16))
+        self.detail_cover_btn = self._button("Cover aktualisieren", self._on_detail_update_cover, icon=get_icon("covers"), icon_size=QSize(16, 16))
+        self.detail_folder_btn = self._button("Im Explorer anzeigen", self._on_detail_open_folder, icon=get_icon("folder"), icon_size=QSize(16, 16))
+        self.detail_del_btn = self._button("Löschen", self._on_detail_delete, obj_name="danger", icon=get_icon("trash"), icon_size=QSize(16, 16))
 
         for btn in (self.detail_play_btn, self.detail_fav_btn, self.detail_cover_btn, self.detail_folder_btn, self.detail_del_btn):
             layout.addWidget(btn)
@@ -935,7 +950,8 @@ class MusicWindow(QMainWindow):
         self.detail_plays.setText(f"Gespielt: {plays} mal")
 
         self.detail_cover.setPixmap(get_cover_pixmap(fp, 180))
-        self.detail_fav_btn.setText("💔 Aus Favoriten" if fav else "❤️ Zu Favoriten")
+        self.detail_fav_btn.setText("Aus Favoriten" if fav else "Zu Favoriten")
+        self.detail_fav_btn.setIcon(get_icon("heart-filled" if fav else "heart"))
         self.details_panel.show()
 
     def _on_detail_play(self):
@@ -1271,10 +1287,10 @@ class MusicWindow(QMainWindow):
         tb_layout.setContentsMargins(8, 6, 8, 6)
         tb_layout.setSpacing(8)
 
-        refresh_btn = self._button("🔄 Sync", self.run_sync_library, obj_name="toolbarBtn")
-        cover_btn = self._button("🖼 Covers", self.run_cover_search, obj_name="toolbarBtn")
-        folder_btn = self._button("📂 Ordner", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.music_root))), obj_name="toolbarBtn")
-        delete_btn = self._button("🗑 Löschen", lambda: self.delete_selected_track(favorites), obj_name="toolbarBtn")
+        refresh_btn = self._button("Sync", self.run_sync_library, obj_name="toolbarBtn", icon=get_icon("sync"), icon_size=QSize(16, 16))
+        cover_btn = self._button("Covers", self.run_cover_search, obj_name="toolbarBtn", icon=get_icon("covers"), icon_size=QSize(16, 16))
+        folder_btn = self._button("Ordner", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.music_root))), obj_name="toolbarBtn", icon=get_icon("folder"), icon_size=QSize(16, 16))
+        delete_btn = self._button("Löschen", lambda: self.delete_selected_track(favorites), obj_name="toolbarBtn", icon=get_icon("trash"), icon_size=QSize(16, 16))
 
         for b in [refresh_btn, cover_btn, folder_btn, delete_btn]:
             tb_layout.addWidget(b)
@@ -1289,15 +1305,16 @@ class MusicWindow(QMainWindow):
 
         # View Toggle Buttons
         view_stack = QStackedWidget()
-        list_toggle = self._button("≡ Liste", lambda: view_stack.setCurrentIndex(0), obj_name="toolbarBtn")
-        grid_toggle = self._button("⊞ Raster", lambda: view_stack.setCurrentIndex(1), obj_name="toolbarBtn")
+        list_toggle = self._button("Liste", lambda: view_stack.setCurrentIndex(0), obj_name="toolbarBtn", icon=get_icon("view-list"), icon_size=QSize(16, 16))
+        grid_toggle = self._button("Raster", lambda: view_stack.setCurrentIndex(1), obj_name="toolbarBtn", icon=get_icon("view-grid"), icon_size=QSize(16, 16))
         tb_layout.addWidget(list_toggle)
         tb_layout.addWidget(grid_toggle)
 
         # Live Search Field on Right
         search_input = QLineEdit()
         search_input.setObjectName("searchBar")
-        search_input.setPlaceholderText("🔍 Suchen …")
+        search_input.setPlaceholderText("Suchen …")
+        search_input.addAction(get_icon("search"), QLineEdit.LeadingPosition)
         search_input.setFixedWidth(220)
         search_input.textChanged.connect(self.on_search_changed)
         tb_layout.addWidget(search_input)
@@ -1313,17 +1330,20 @@ class MusicWindow(QMainWindow):
 
             self.chip_buttons = {}
             chips_def = [
-                ("Alle", "Alle"),
-                ("Favoriten", "❤️ Favoriten"),
-                ("Zuletzt hinzugefügt", "⏱ Zuletzt hinzugefügt"),
-                ("Nicht gehört", "🎧 Nicht gehört"),
-                ("Playlists", "📋 Playlists"),
-                ("artist_menu", "🎤 Künstler ▾"),
-                ("year_menu", "📅 Jahr ▾"),
-                ("genre_menu", "🎸 Genre ▾"),
+                ("Alle", "Alle", None),
+                ("Favoriten", "Favoriten", "heart"),
+                ("Zuletzt hinzugefügt", "Zuletzt hinzugefügt", "clock"),
+                ("Nicht gehört", "Nicht gehört", "headphones"),
+                ("Playlists", "Playlists", "playlist"),
+                ("artist_menu", "Künstler ▾", "users"),
+                ("year_menu", "Jahr ▾", "calendar"),
+                ("genre_menu", "Genre ▾", "tag"),
             ]
-            for key, label in chips_def:
+            for key, label, icon_name in chips_def:
                 btn = QPushButton(label)
+                if icon_name:
+                    btn.setIcon(get_icon(icon_name))
+                    btn.setIconSize(QSize(14, 14))
                 btn.setObjectName("chipBtn")
                 btn.setProperty("active", "true" if key == "Alle" else "false")
                 btn.clicked.connect(lambda _, k=key, b=btn: self._on_chip_clicked(k, b))
@@ -1383,8 +1403,8 @@ class MusicWindow(QMainWindow):
             empty_btn_row = QHBoxLayout()
             empty_btn_row.setAlignment(Qt.AlignCenter)
             empty_btn_row.setSpacing(12)
-            btn_dl = self._button("🎵 Zum Downloader", lambda: self.show_page(0), True)
-            btn_folder = self._button("📂 Musikordner öffnen", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.music_root))))
+            btn_dl = self._button("Zum Downloader", lambda: self.show_page(0), True, icon=get_icon("downloader"), icon_size=QSize(16, 16))
+            btn_folder = self._button("Musikordner öffnen", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.music_root))), icon=get_icon("folder"), icon_size=QSize(16, 16))
             empty_btn_row.addWidget(btn_dl)
             empty_btn_row.addWidget(btn_folder)
             empty_layout.addLayout(empty_btn_row)
@@ -1416,7 +1436,7 @@ class MusicWindow(QMainWindow):
                 return
             menu = QMenu(self)
             for a in artists[:30]:
-                menu.addAction(a, lambda val=a: self._apply_custom_chip("artist_menu", f"Künstler: {val}", f"🎤 {val}"))
+                menu.addAction(a, lambda val=a: self._apply_custom_chip("artist_menu", f"Künstler: {val}", val))
             menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
             return
 
@@ -1427,7 +1447,7 @@ class MusicWindow(QMainWindow):
                 return
             menu = QMenu(self)
             for y in years[:25]:
-                menu.addAction(y, lambda val=y: self._apply_custom_chip("year_menu", f"Jahr: {val}", f"📅 {val}"))
+                menu.addAction(y, lambda val=y: self._apply_custom_chip("year_menu", f"Jahr: {val}", val))
             menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
             return
 
@@ -1437,7 +1457,7 @@ class MusicWindow(QMainWindow):
                 return
             menu = QMenu(self)
             for g in genres[:25]:
-                menu.addAction(g, lambda val=g: self._apply_custom_chip("genre_menu", f"Genre: {val}", f"🎸 {val}"))
+                menu.addAction(g, lambda val=g: self._apply_custom_chip("genre_menu", f"Genre: {val}", val))
             menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
             return
 
@@ -1447,11 +1467,11 @@ class MusicWindow(QMainWindow):
         self.current_chip = chip_name
         if hasattr(self, "chip_buttons"):
             if "artist_menu" in self.chip_buttons:
-                self.chip_buttons["artist_menu"].setText("🎤 Künstler ▾")
+                self.chip_buttons["artist_menu"].setText("Künstler ▾")
             if "year_menu" in self.chip_buttons:
-                self.chip_buttons["year_menu"].setText("📅 Jahr ▾")
+                self.chip_buttons["year_menu"].setText("Jahr ▾")
             if "genre_menu" in self.chip_buttons:
-                self.chip_buttons["genre_menu"].setText("🎸 Genre ▾")
+                self.chip_buttons["genre_menu"].setText("Genre ▾")
 
             for k, b in self.chip_buttons.items():
                 is_act = (k == chip_name)
@@ -1470,11 +1490,11 @@ class MusicWindow(QMainWindow):
                 if k == menu_key:
                     b.setText(f"{display_text} ✕")
                 elif k == "artist_menu" and menu_key != "artist_menu":
-                    b.setText("🎤 Künstler ▾")
+                    self.chip_buttons["artist_menu"].setText("Künstler ▾")
                 elif k == "year_menu" and menu_key != "year_menu":
-                    b.setText("📅 Jahr ▾")
+                    self.chip_buttons["year_menu"].setText("Jahr ▾")
                 elif k == "genre_menu" and menu_key != "genre_menu":
-                    b.setText("🎸 Genre ▾")
+                    self.chip_buttons["genre_menu"].setText("Genre ▾")
                 b.style().unpolish(b)
                 b.style().polish(b)
 
@@ -1811,11 +1831,11 @@ class MusicWindow(QMainWindow):
         left.addLayout(meta_box)
 
         # Quick action buttons in mini player
-        self.bar_fav_btn = self._button("🤍", self._toggle_current_fav, obj_name="playerBtn")
+        self.bar_fav_btn = self._button("", self._toggle_current_fav, obj_name="playerBtn", icon=get_icon("heart"), icon_size=QSize(18, 18))
         self.bar_fav_btn.setToolTip("Zu Favoriten hinzufügen")
-        self.bar_folder_btn = self._button("📂", self._open_current_folder, obj_name="playerBtn")
+        self.bar_folder_btn = self._button("", self._open_current_folder, obj_name="playerBtn", icon=get_icon("folder"), icon_size=QSize(18, 18))
         self.bar_folder_btn.setToolTip("Song-Ordner öffnen")
-        self.bar_jump_pl_btn = self._button("🎵", self._jump_to_current_playlist, obj_name="playerBtn")
+        self.bar_jump_pl_btn = self._button("", self._jump_to_current_playlist, obj_name="playerBtn", icon=get_icon("playlist"), icon_size=QSize(18, 18))
         self.bar_jump_pl_btn.setToolTip("Zu dieser Playlist springen")
         self.bar_jump_pl_btn.hide()
 
@@ -1835,11 +1855,11 @@ class MusicWindow(QMainWindow):
         ctrl_row.setSpacing(8)
         ctrl_row.setAlignment(Qt.AlignCenter)
 
-        self.shuffle_btn = self._button("⇄", self.toggle_shuffle, obj_name="playerBtn")
-        self.prev_btn = self._button("⏮", lambda: self.skip(-1), obj_name="playerBtn")
-        self.play_btn = self._button("▶", self.toggle_play, obj_name="playPauseBtn")
-        self.next_btn = self._button("⏭", lambda: self.skip(1), obj_name="playerBtn")
-        self.repeat_btn = self._button("↻", self.toggle_repeat, obj_name="playerBtn")
+        self.shuffle_btn = self._button("", self.toggle_shuffle, obj_name="playerBtn", icon=get_icon("shuffle"), icon_size=QSize(18, 18))
+        self.prev_btn = self._button("", lambda: self.skip(-1), obj_name="playerBtn", icon=get_icon("previous"), icon_size=QSize(20, 20))
+        self.play_btn = self._button("", self.toggle_play, obj_name="playPauseBtn", icon=get_icon("play"), icon_size=QSize(24, 24))
+        self.next_btn = self._button("", lambda: self.skip(1), obj_name="playerBtn", icon=get_icon("next"), icon_size=QSize(20, 20))
+        self.repeat_btn = self._button("", self.toggle_repeat, obj_name="playerBtn", icon=get_icon("repeat"), icon_size=QSize(18, 18))
 
         if self.is_shuffle:
             self.shuffle_btn.setStyleSheet("color: #3DDC63;")
@@ -1880,7 +1900,7 @@ class MusicWindow(QMainWindow):
         right.setSpacing(8)
         right.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
-        self.vol_btn = self._button("🔊", self._toggle_mute, obj_name="playerBtn")
+        self.vol_btn = self._button("", self._toggle_mute, obj_name="playerBtn", icon=get_icon("volume"), icon_size=QSize(20, 20))
         self.vol_btn.setToolTip("Stummschalten / Wiederherstellen")
 
         saved_vol = int(float(self.settings.get("volume", "75")))
@@ -2262,10 +2282,10 @@ class MusicWindow(QMainWindow):
         self.bar_cover.setPixmap(get_cover_pixmap(f_path, 48))
 
         if hasattr(self, "bar_fav_btn"):
-            self.bar_fav_btn.setText("❤️" if fav else "🤍")
+            self.bar_fav_btn.setIcon(get_icon("heart-filled" if fav else "heart"))
 
         if coll and coll not in ("Einzeltitel", "Single") and hasattr(self, "bar_pl_badge"):
-            self.bar_pl_badge.setText(f"📋 {coll}")
+            self.bar_pl_badge.setText(coll)
             self.bar_pl_badge.show()
             self.bar_jump_pl_btn.show()
             self.current_playlist_name = coll
@@ -2279,7 +2299,7 @@ class MusicWindow(QMainWindow):
 
         self.player.setSource(QUrl.fromLocalFile(f_path))
         self.player.play()
-        self.play_btn.setText("❚❚")
+        self.play_btn.setIcon(get_icon("pause"))
 
     def _toggle_current_fav(self):
         if not self.current_track:
@@ -2291,7 +2311,7 @@ class MusicWindow(QMainWindow):
             if updated:
                 self.current_track = updated[0]
                 is_fav = bool(self.current_track["favorite"])
-                self.bar_fav_btn.setText("❤️" if is_fav else "🤍")
+                self.bar_fav_btn.setIcon(get_icon("heart-filled" if is_fav else "heart"))
             self.refresh_library()
             self.refresh_dashboard()
 
@@ -2320,17 +2340,17 @@ class MusicWindow(QMainWindow):
         self.audio.setVolume(val / 100.0)
         self.db.set_setting("volume", str(val))
         if val == 0:
-            self.vol_btn.setText("🔇")
+            self.vol_btn.setIcon(get_icon("volume-mute"))
         else:
-            self.vol_btn.setText("🔊")
+            self.vol_btn.setIcon(get_icon("volume"))
 
     def toggle_play(self):
         if self.player.playbackState() == QMediaPlayer.PlayingState:
             self.player.pause()
-            self.play_btn.setText("▶")
+            self.play_btn.setIcon(get_icon("play"))
         else:
             self.player.play()
-            self.play_btn.setText("❚❚")
+            self.play_btn.setIcon(get_icon("pause"))
 
     def skip(self, delta: int):
         if not self.active_rows:

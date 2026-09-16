@@ -153,29 +153,21 @@ QPushButton#playerBtn {
     background-color: transparent;
     border: none;
     border-radius: 21px;
-    font-family: "Segoe UI Symbol", "Segoe UI", sans-serif;
-    font-size: 20px;
     min-width: 42px;
     min-height: 42px;
     max-width: 42px;
     max-height: 42px;
     padding: 0px;
-    color: #A0A6AD;
 }
 
 QPushButton#playerBtn:hover {
     background-color: #252B34;
-    color: #3DDC63;
 }
 
 QPushButton#playPauseBtn {
     background-color: #3DDC63;
-    color: #0B1E10;
     border: none;
     border-radius: 26px;
-    font-family: "Segoe UI Symbol", "Segoe UI", sans-serif;
-    font-size: 22px;
-    font-weight: bold;
     min-width: 52px;
     min-height: 52px;
     max-width: 52px;
@@ -185,7 +177,6 @@ QPushButton#playPauseBtn {
 
 QPushButton#playPauseBtn:hover {
     background-color: #48E76E;
-    color: #0B1E10;
 }
 
 /* =========================================================
