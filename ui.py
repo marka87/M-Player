@@ -56,32 +56,15 @@ class GridCardDelegate(QStyledItemDelegate):
         is_hover = bool(option.state & QStyle.State_MouseOver)
         is_selected = bool(option.state & QStyle.State_Selected)
 
-        # Detect active skin from parent window
-        win = option.widget.window() if option.widget else None
-        current_theme = getattr(win, "settings", {}).get("theme", "dark.qss") if win else "dark.qss"
-
-        if current_theme == "light.qss":
-            bg_color = QColor("#F0F4F8") if is_hover else (QColor("#E8F5E9") if is_selected else QColor("#FFFFFF"))
-            border_color = QColor("#10B981") if (is_hover or is_selected) else QColor("#E5E7EB")
-            title_color = QColor("#111827")
-            artist_color = QColor("#6B7280")
-            border_radius = 8
-        elif current_theme == "winamp.qss":
-            bg_color = QColor("#2A2A2A") if is_hover else (QColor("#1E1E1E") if is_selected else QColor("#232323"))
-            border_color = QColor("#00FF00") if (is_hover or is_selected) else QColor("#3D3D3D")
-            title_color = QColor("#00FF00") if (is_hover or is_selected) else QColor("#FFFFFF")
-            artist_color = QColor("#A0A0A0")
-            border_radius = 0  # Retro Winamp square look
-        else:  # dark.qss
-            bg_color = QColor("#222832") if is_hover else (QColor("#1A2421") if is_selected else QColor("#161A20"))
-            border_color = QColor("#3DDC63") if (is_hover or is_selected) else QColor("#262E38")
-            title_color = QColor("#FFFFFF")
-            artist_color = QColor("#A7A7A7")
-            border_radius = 8
+        # Modern Dark Card Styling
+        bg_color = QColor("#222832") if is_hover else (QColor("#1A2421") if is_selected else QColor("#161A20"))
+        border_color = QColor("#3DDC63") if (is_hover or is_selected) else QColor("#262E38")
+        title_color = QColor("#FFFFFF")
+        artist_color = QColor("#A7A7A7")
 
         # Draw card background & border
         path = QPainterPath()
-        path.addRoundedRect(rect, border_radius, border_radius)
+        path.addRoundedRect(rect, 8, 8)
         painter.fillPath(path, bg_color)
         painter.strokePath(path, QPen(border_color, 1))
 
@@ -110,8 +93,6 @@ class GridCardDelegate(QStyledItemDelegate):
         title_font = QFont(option.font)
         title_font.setPixelSize(12)
         title_font.setBold(True)
-        if current_theme == "winamp.qss":
-            title_font.setFamily("Consolas")
         painter.setFont(title_font)
         fm_title = QFontMetrics(title_font)
 
@@ -125,8 +106,6 @@ class GridCardDelegate(QStyledItemDelegate):
         artist_font = QFont(option.font)
         artist_font.setPixelSize(11)
         artist_font.setBold(False)
-        if current_theme == "winamp.qss":
-            artist_font.setFamily("Consolas")
         painter.setFont(artist_font)
         fm_artist = QFontMetrics(artist_font)
 
@@ -786,6 +765,8 @@ class MusicWindow(QMainWindow):
 
         # Load persisted settings
         self.settings = self.db.load_all_settings()
+        self.settings["theme"] = "dark.qss"
+        self.db.set_setting("theme", "dark.qss")
         self.music_root = Path(self.settings.get("music_folder", str(music_root)))
         self.is_shuffle = (self.settings.get("shuffle", "0") == "1")
         self.is_repeat = (self.settings.get("repeat", "0") == "1")
@@ -2173,23 +2154,6 @@ class MusicWindow(QMainWindow):
 
         layout.addLayout(drop_row)
 
-        theme_row = QHBoxLayout()
-        theme_row.addWidget(QLabel("Design / Skin"))
-        self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["Modern Dark (Standard)", "Modern Light", "Winamp Classic"])
-        
-        current_theme = self.settings.get("theme", "dark.qss")
-        if current_theme == "light.qss":
-            self.theme_combo.setCurrentIndex(1)
-        elif current_theme == "winamp.qss":
-            self.theme_combo.setCurrentIndex(2)
-        else:
-            self.theme_combo.setCurrentIndex(0)
-            
-        self.theme_combo.currentIndexChanged.connect(self.apply_theme_from_ui)
-        theme_row.addWidget(self.theme_combo, 1)
-        layout.addLayout(theme_row)
-
         # 5 Settings Checkboxes (Priority 8)
         chk_group = QFrame()
         chk_group.setObjectName("metaBox")
@@ -2977,26 +2941,3 @@ class MusicWindow(QMainWindow):
         self.pool.setMaxThreadCount(int(self.parallel.currentText()))
         self.refresh_dashboard()
         QMessageBox.information(self, "Gespeichert", "Einstellungen erfolgreich gespeichert.")
-
-    def apply_theme_from_ui(self):
-        idx = self.theme_combo.currentIndex()
-        if idx == 1:
-            theme_file = "light.qss"
-        elif idx == 2:
-            theme_file = "winamp.qss"
-        else:
-            theme_file = "dark.qss"
-            
-        self.db.set_setting("theme", theme_file)
-        self.settings["theme"] = theme_file
-        
-        base = Path(__file__).resolve().parent
-        theme_path = base / "assets" / "themes" / theme_file
-        if theme_path.exists():
-            QApplication.instance().setStyleSheet(theme_path.read_text(encoding="utf-8"))
-            
-        self.update()
-        if hasattr(self, "lib_grid"):
-            self.lib_grid.viewport().update()
-        if hasattr(self, "fav_grid"):
-            self.fav_grid.viewport().update()

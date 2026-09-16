@@ -194,11 +194,8 @@ def test_full_ui():
         delegate.paint(painter, opt, win.lib_grid.model().index(0, 0))
         painter.end()
 
-        # Check Theme switching for all 3 themes (Light, Winamp, Dark)
-        assert hasattr(win, "theme_combo")
-        for theme_idx, expected_theme in [(1, "light.qss"), (2, "winamp.qss"), (0, "dark.qss")]:
-            win.theme_combo.setCurrentIndex(theme_idx)
-            assert win.settings.get("theme") == expected_theme
+        # Check Single Modern Dark theme
+        assert win.settings.get("theme") == "dark.qss"
 
         win.close()
         print("All UI tests passed successfully!")

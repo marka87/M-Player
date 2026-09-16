@@ -48,11 +48,7 @@ if __name__ == "__main__":
         app.setWindowIcon(QIcon(str(ico_path)))
     
     db = MusicDatabase(base / "music_library.db")
-    settings = db.load_all_settings()
-    theme_file = settings.get("theme", "dark.qss")
-    theme_path = base / "assets" / "themes" / theme_file
-    if not theme_path.exists():
-        theme_path = base / "assets" / "themes" / "dark.qss"
+    theme_path = base / "assets" / "themes" / "dark.qss"
     if theme_path.exists():
         app.setStyleSheet(theme_path.read_text(encoding="utf-8"))
     
