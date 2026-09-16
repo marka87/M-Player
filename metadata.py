@@ -33,10 +33,9 @@ def safe_name(value: str, fallback: str) -> str:
 
 def target_path(root: Path, track: TrackMetadata) -> Path:
     playlist = safe_name(track.collection, "Einzeltitel")
-    num = f"{track.track_number:03d} - " if track.track_number else ""
     artist = safe_name(track.artist, "Unbekannter Artist")
     title = safe_name(track.title, "Unbekannter Titel")
-    return root / playlist / f"{num}{artist} - {title}.mp3"
+    return root / playlist / f"{artist} - {title}.mp3"
 
 
 def save_playlist_json(folder: Path, playlist_name: str, url: str, song_count: int) -> None:

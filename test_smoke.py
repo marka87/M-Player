@@ -11,7 +11,7 @@ def run() -> None:
     with TemporaryDirectory() as directory:
         root = Path(directory)
         track = TrackMetadata('Titel', 'Artist', 'Album', track_number=1, genre='Rock', collection='PartyHits')
-        expected_path = root / 'PartyHits' / '001 - Artist - Titel.mp3'
+        expected_path = root / 'PartyHits' / 'Artist - Titel.mp3'
         assert target_path(root, track) == expected_path
 
         # Test playlist.json saving
