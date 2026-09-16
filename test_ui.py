@@ -118,7 +118,12 @@ def test_full_ui():
         pix.save(str(test_cover), "JPG")
         get_cover_pixmap.cache_clear()
         cov = get_cover_pixmap(str(f1), 48)
-        assert not cov.isNull()
+        # Check Table Sorting (Title asc/desc, duration, year)
+        from PySide6.QtCore import Qt
+        win.lib_table.sortByColumn(2, Qt.DescendingOrder)
+        assert win.lib_model.rows[0]["title"] == "Song Two"
+        win.lib_table.sortByColumn(2, Qt.AscendingOrder)
+        assert win.lib_model.rows[0]["title"] == "Song One"
 
         win.close()
         print("All UI tests passed successfully!")

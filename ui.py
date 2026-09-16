@@ -134,6 +134,8 @@ class TrackModel(QAbstractTableModel):
         self.selectable = selectable
         self.checked = set()
         self.status = {}
+        self._sort_col: int | None = None
+        self._sort_order = Qt.AscendingOrder
 
     def rowCount(self, parent=QModelIndex()):
         return len(self.rows)
@@ -153,6 +155,16 @@ class TrackModel(QAbstractTableModel):
                 return self.headers[section]
         return None
 
+    @staticmethod
+    def _val(item, key, default=""):
+        if isinstance(item, dict):
+            return item.get(key, default)
+        if hasattr(item, key):
+            return getattr(item, key)
+        if hasattr(item, "keys") and key in item.keys():
+            return item[key]
+        return default
+
     def data(self, index, role=Qt.DisplayRole):
         if not index.isValid():
             return None
@@ -162,18 +174,9 @@ class TrackModel(QAbstractTableModel):
         if col == 0 and self.selectable and role == Qt.CheckStateRole:
             return Qt.Checked if row in self.checked else Qt.Unchecked
 
-        def value(key, default=""):
-            if isinstance(item, dict):
-                return item.get(key, default)
-            if hasattr(item, key):
-                return getattr(item, key)
-            if hasattr(item, "keys") and key in item.keys():
-                return item[key]
-            return default
-
         if col == 1:
             if role == Qt.DecorationRole:
-                path = value("file_path") or value("cover_url")
+                path = self._val(item, "file_path") or self._val(item, "cover_url")
                 return get_cover_pixmap(str(path), 48)
             return None
 
@@ -184,12 +187,12 @@ class TrackModel(QAbstractTableModel):
             values = [
                 "",
                 "",
-                value("title"),
-                value("artist"),
-                value("album"),
-                time_text(value("duration")) if value("duration") else "--:--",
-                str(value("year") or "-"),
-                f"{value('bitrate')} kbps" if value("bitrate") else "320 kbps",
+                self._val(item, "title"),
+                self._val(item, "artist"),
+                self._val(item, "album"),
+                time_text(self._val(item, "duration")) if self._val(item, "duration") else "--:--",
+                str(self._val(item, "year") or "-"),
+                f"{self._val(item, 'bitrate')} kbps" if self._val(item, "bitrate") else "320 kbps",
                 self.status.get(row, "Bereit")
             ]
             return values[col]
@@ -212,9 +215,64 @@ class TrackModel(QAbstractTableModel):
             return True
         return False
 
+    def _apply_sort(self, column: int, order: Qt.SortOrder) -> None:
+        col_map = {
+            2: "title",
+            3: "artist",
+            4: "album",
+            5: "duration",
+            6: "year",
+            7: "bitrate",
+            8: "status",
+        }
+        key_name = col_map.get(column)
+        if not key_name or not self.rows:
+            return
+
+        status_map = dict(self.status)
+
+        def sort_key(item):
+            if key_name == "status":
+                row_idx = self.rows.index(item) if item in self.rows else -1
+                return status_map.get(row_idx, "Bereit").lower()
+            val = self._val(item, key_name, "")
+            if key_name in ("duration", "bitrate"):
+                try:
+                    return float(val or 0)
+                except (ValueError, TypeError):
+                    return 0.0
+            if key_name == "year":
+                try:
+                    return int(str(val).strip()[:4])
+                except (ValueError, TypeError):
+                    return 0
+            return str(val or "").lower()
+
+        self.rows.sort(key=sort_key, reverse=(order == Qt.DescendingOrder))
+
+    def sort(self, column: int, order: Qt.SortOrder = Qt.AscendingOrder) -> None:
+        if column < 2 or not self.rows:
+            return
+        self._sort_col = column
+        self._sort_order = order
+
+        self.layoutAboutToBeChanged.emit()
+
+        checked_objs = {id(self.rows[i]) for i in self.checked if i < len(self.rows)}
+        status_objs = {id(self.rows[i]): st for i, st in self.status.items() if i < len(self.rows)}
+
+        self._apply_sort(column, order)
+
+        self.checked = {i for i, r in enumerate(self.rows) if id(r) in checked_objs}
+        self.status = {i: status_objs[id(r)] for i, r in enumerate(self.rows) if id(r) in status_objs}
+
+        self.layoutChanged.emit()
+
     def set_rows(self, rows):
         self.beginResetModel()
         self.rows = list(rows)
+        if getattr(self, "_sort_col", None) is not None:
+            self._apply_sort(self._sort_col, self._sort_order)
         self.checked = set(range(len(self.rows))) if self.selectable else set()
         self.status = {}
         self.endResetModel()
@@ -1431,8 +1489,9 @@ class MusicWindow(QMainWindow):
         table.setSortingEnabled(True)
 
         header = table.horizontalHeader()
+        header.setSortIndicator(-1, Qt.AscendingOrder)
         header.setSectionsClickable(True)
-        header.sectionClicked.connect(lambda col: self._on_header_clicked(col, model))
+        header.sectionClicked.connect(lambda col: self._on_header_clicked(col, model, table))
 
         # Checkbox & Cover
         header.setSectionResizeMode(0, QHeaderView.Fixed)
@@ -1456,7 +1515,11 @@ class MusicWindow(QMainWindow):
         table.setColumnWidth(8, 105)
         return table
 
-    def _on_header_clicked(self, col: int, model: TrackModel):
+    def _on_header_clicked(self, col: int, model: TrackModel, table: QTableView | None = None):
+        if col < 2 and table is not None:
+            prev_col = getattr(model, "_sort_col", None)
+            prev_order = getattr(model, "_sort_order", Qt.AscendingOrder)
+            table.horizontalHeader().setSortIndicator(prev_col if prev_col is not None else -1, prev_order)
         if col == 0 and model.selectable:
             all_selected = (len(model.checked) == len(model.rows) and len(model.rows) > 0)
             if all_selected:

@@ -23,6 +23,27 @@ from metadata import TrackMetadata, target_path, write_id3, save_playlist_json
 Progress = Callable[[float, str, str, str], None]
 
 
+def _ensure_external_tools() -> None:
+    """Ensure ffmpeg, ffprobe, and deno are in PATH (checking WinGet install locations if missing)."""
+    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+        for cand in Path.home().glob("AppData/Local/Microsoft/WinGet/Packages/*FFmpeg*/**/ffmpeg.exe"):
+            if cand.is_file():
+                bin_dir = str(cand.parent)
+                if bin_dir not in os.environ.get("PATH", ""):
+                    os.environ["PATH"] = f"{bin_dir};{os.environ.get('PATH', '')}"
+                break
+    if not shutil.which("deno"):
+        for cand in Path.home().glob("AppData/Local/Microsoft/WinGet/Packages/*Deno*/**/deno.exe"):
+            if cand.is_file():
+                bin_dir = str(cand.parent)
+                if bin_dir not in os.environ.get("PATH", ""):
+                    os.environ["PATH"] = f"{bin_dir};{os.environ.get('PATH', '')}"
+                break
+
+
+_ensure_external_tools()
+
+
 class DownloadFailure(RuntimeError):
     pass
 
@@ -204,10 +225,15 @@ class MusicDownloader:
                 "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "320"}],
                 "postprocessor_args": {"FFmpegExtractAudio": ["-codec:a", "libmp3lame", "-b:a", "320k"]},
             }
-            if not shutil.which("ffmpeg"):
-                for cand in Path.home().glob("AppData/Local/Microsoft/WinGet/Packages/*FFmpeg*/bin/ffmpeg.exe"):
+            ffmpeg_path = shutil.which("ffmpeg")
+            if ffmpeg_path:
+                options["ffmpeg_location"] = str(Path(ffmpeg_path).parent)
+            else:
+                for cand in Path.home().glob("AppData/Local/Microsoft/WinGet/Packages/*FFmpeg*/**/ffmpeg.exe"):
                     if cand.is_file():
-                        options["ffmpeg_location"] = str(cand)
+                        bin_dir = str(cand.parent)
+                        options["ffmpeg_location"] = bin_dir
+                        os.environ["PATH"] = f"{bin_dir};{os.environ.get('PATH', '')}"
                         break
             try:
                 with yt_dlp.YoutubeDL(options) as ydl:
