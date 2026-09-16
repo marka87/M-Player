@@ -83,3 +83,4 @@ def fetch_recommendations(artist: str, title: str, source_url: str = "", limit: 
             return results
     except Exception:
         return []
+
