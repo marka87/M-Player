@@ -356,12 +356,16 @@ class TrackModel(QAbstractTableModel):
 
         self.layoutChanged.emit()
 
-    def set_rows(self, rows):
+    def set_rows(self, rows, select_all=False):
         self.beginResetModel()
+        old_ids = {self._val(self.rows[i], "id") for i in self.checked if i < len(self.rows)} if not select_all else set()
         self.rows = list(rows)
         if getattr(self, "_sort_col", None) is not None:
             self._apply_sort(self._sort_col, self._sort_order)
-        self.checked = set(range(len(self.rows))) if self.selectable else set()
+        if select_all or not old_ids:
+            self.checked = set(range(len(self.rows))) if self.selectable else set()
+        else:
+            self.checked = {i for i, r in enumerate(self.rows) if self._val(r, "id") in old_ids}
         self.status = {}
         self.endResetModel()
 
@@ -807,6 +811,7 @@ class MusicWindow(QMainWindow):
         self.search_timer.timeout.connect(self.refresh_library)
 
         self._build_ui()
+        self._setup_shortcuts()
 
         # Startup cleanup if enabled
         if self.settings.get("cleanup_missing_startup", "0") == "1":
@@ -816,6 +821,58 @@ class MusicWindow(QMainWindow):
         self.refresh_dashboard()
         self.refresh_playlists()
         self.update_queue_stats()
+
+    def _setup_shortcuts(self):
+        QShortcut(QKeySequence(Qt.Key_Space), self, self._on_space_pressed)
+        QShortcut(QKeySequence(Qt.Key_Left), self, lambda: self._seek_relative(-5000))
+        QShortcut(QKeySequence(Qt.Key_Right), self, lambda: self._seek_relative(5000))
+        QShortcut(QKeySequence(Qt.Key_Delete), self, self._on_delete_pressed)
+        QShortcut(QKeySequence(Qt.Key_Return), self, self._on_enter_pressed)
+        QShortcut(QKeySequence(Qt.Key_Enter), self, self._on_enter_pressed)
+
+    def _on_space_pressed(self):
+        focus = QApplication.focusWidget()
+        if isinstance(focus, QLineEdit):
+            return
+        self.toggle_play()
+
+    def _seek_relative(self, delta_ms: int):
+        focus = QApplication.focusWidget()
+        if isinstance(focus, QLineEdit):
+            return
+        new_pos = max(0, min(self.player.duration(), self.player.position() + delta_ms))
+        self.player.setPosition(new_pos)
+
+    def _on_enter_pressed(self):
+        focus = QApplication.focusWidget()
+        if isinstance(focus, QLineEdit):
+            return
+        if hasattr(self, "lib_table") and self.lib_table.hasFocus():
+            idx = self.lib_table.currentIndex()
+            if idx.isValid() and idx.row() < len(self.lib_model.rows):
+                self.play(self.lib_model.rows[idx.row()], idx.row(), self.lib_model.rows)
+        elif hasattr(self, "lib_grid") and self.lib_grid.hasFocus():
+            item = self.lib_grid.currentItem()
+            if item:
+                self._on_grid_double_click(item, self.lib_model)
+        elif hasattr(self, "fav_table") and self.fav_table.hasFocus():
+            idx = self.fav_table.currentIndex()
+            if idx.isValid() and idx.row() < len(self.fav_model.rows):
+                self.play(self.fav_model.rows[idx.row()], idx.row(), self.fav_model.rows)
+        elif hasattr(self, "fav_grid") and self.fav_grid.hasFocus():
+            item = self.fav_grid.currentItem()
+            if item:
+                self._on_grid_double_click(item, self.fav_model)
+
+    def _on_delete_pressed(self):
+        focus = QApplication.focusWidget()
+        if isinstance(focus, QLineEdit):
+            return
+        cur_page = self.pages.currentIndex() if hasattr(self, "pages") else 2
+        if cur_page == 2:
+            self.delete_selected_track(favorites=False)
+        elif cur_page == 3:
+            self.delete_selected_track(favorites=True)
 
     def _button(self, text, slot, accent=False, obj_name="", icon: QIcon | None = None, icon_size: QSize | None = None):
         btn = QPushButton(text)
@@ -1149,7 +1206,7 @@ class MusicWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setStyleSheet("background: transparent;")
+        scroll.setStyleSheet("background: #171A1F;")
         
         content = QWidget()
         layout = QVBoxLayout(content)
@@ -1659,7 +1716,8 @@ class MusicWindow(QMainWindow):
         search_input.setObjectName("searchBar")
         search_input.setPlaceholderText("Suchen …")
         search_input.addAction(get_icon("search"), QLineEdit.LeadingPosition)
-        search_input.setFixedWidth(220)
+        search_input.setMinimumWidth(180)
+        search_input.setMaximumWidth(320)
         search_input.textChanged.connect(self.on_search_changed)
         tb_layout.addWidget(search_input)
 
@@ -2568,40 +2626,42 @@ class MusicWindow(QMainWindow):
             self.refresh_dashboard()
 
     def refresh_library(self):
-        active_search = (
-            self.fav_search.text().strip()
-            if self.pages.currentIndex() == 3 and hasattr(self, "fav_search")
-            else (self.lib_search.text().strip() if hasattr(self, "lib_search") else "")
-        )
-        all_tracks = self.db.tracks(active_search, filter_chip=self.current_chip)
-        fav_tracks = self.db.tracks(active_search, favorites=True)
+        cur_page = self.pages.currentIndex() if hasattr(self, "pages") else 2
+        is_fav_page = (cur_page == 3)
 
-        self.lib_model.set_rows(all_tracks)
-        self.fav_model.set_rows(fav_tracks)
+        lib_query = self.lib_search.text().strip() if hasattr(self, "lib_search") else ""
+        fav_query = self.fav_search.text().strip() if hasattr(self, "fav_search") else ""
 
-        if hasattr(self, "lib_view_stack") and self.lib_view_stack.currentIndex() == 1:
-            self._populate_grid(self.lib_grid, all_tracks)
-            self._lib_grid_dirty = False
+        if is_fav_page:
+            fav_tracks = self.db.tracks(fav_query, favorites=True)
+            self.fav_model.set_rows(fav_tracks)
+            if hasattr(self, "fav_view_stack") and self.fav_view_stack.currentIndex() == 1:
+                self._populate_grid(self.fav_grid, fav_tracks)
+                self._fav_grid_dirty = False
+            else:
+                self._fav_grid_dirty = True
+            if hasattr(self, "fav_content_stack"):
+                self.fav_content_stack.setCurrentIndex(1 if len(fav_tracks) == 0 else 0)
         else:
-            self._lib_grid_dirty = True
+            all_tracks = self.db.tracks(lib_query, filter_chip=self.current_chip)
+            self.lib_model.set_rows(all_tracks)
+            if hasattr(self, "lib_view_stack") and self.lib_view_stack.currentIndex() == 1:
+                self._populate_grid(self.lib_grid, all_tracks)
+                self._lib_grid_dirty = False
+            else:
+                self._lib_grid_dirty = True
+            if hasattr(self, "lib_content_stack"):
+                self.lib_content_stack.setCurrentIndex(1 if len(all_tracks) == 0 else 0)
 
-        if hasattr(self, "fav_view_stack") and self.fav_view_stack.currentIndex() == 1:
-            self._populate_grid(self.fav_grid, fav_tracks)
-            self._fav_grid_dirty = False
-        else:
-            self._fav_grid_dirty = True
-
-        if hasattr(self, "lib_content_stack"):
-            self.lib_content_stack.setCurrentIndex(1 if len(all_tracks) == 0 else 0)
-        if hasattr(self, "fav_content_stack"):
-            self.fav_content_stack.setCurrentIndex(1 if len(fav_tracks) == 0 else 0)
+        if not getattr(self, "current_track", None):
+            self._update_sidebar_mini_card(None)
 
     def _populate_grid(self, grid: QListWidget, tracks: list):
         grid.clear()
         for t in tracks:
             item = QListWidgetItem()
-            item.setText(f"{t['title']}\n{t['artist']}")
-            pix = get_cover_pixmap(t["file_path"], 140)
+            item.setText("")  # Delegate paints everything, omit text layout computations
+            pix = get_cover_pixmap(t["file_path"], 130)
             item.setIcon(QIcon(pix))
             item.setData(Qt.UserRole, dict(t))
             grid.addItem(item)
@@ -2726,7 +2786,9 @@ class MusicWindow(QMainWindow):
         self.now_artist.setText(t_artist)
         self.bar_cover.setPixmap(get_cover_pixmap(f_path, 56))
         
-        # Audio Info (Mock / statisch für Performance nach Ponytail)
+        bitrate = track["bitrate"] if hasattr(track, "keys") and "bitrate" in track.keys() else getattr(track, "bitrate", 320)
+        br = int(bitrate) if bitrate else 320
+        self.now_audio_info.setText(f"{br} kbps | MP3")
         self.now_audio_info.show()
 
         if hasattr(self, "bar_fav_btn"):

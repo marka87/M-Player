@@ -20,6 +20,7 @@ class MusicDatabase:
         connection = sqlite3.connect(self.path, timeout=30.0)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA synchronous=NORMAL")
         try:
             yield connection
             connection.commit()
