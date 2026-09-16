@@ -1,130 +1,155 @@
-/* Winamp Classic Skin 1997 - Authentic Look */
+/* Winamp 2026 (Windows 11 + Bento + Spotify) */
 
 QMainWindow, QWidget#centralWidget { 
-    background-color: #171822; /* Winamp Slate Dark */
-    color: #00FF00; 
-    font-family: "Courier New", "Lucida Console", monospace; 
-    font-size: 13px; 
+    background-color: #0B0D11; 
+    color: #FFFFFF; 
+    font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; 
+    font-size: 14px; 
 }
 
-/* 1. SIDEBAR */
+/* SIDEBAR */
 QFrame#sidebarFrame { 
-    background-color: #242635; /* Winamp Base */
-    border: 2px outset #5C5E78; /* 3D Bevel */
-    min-width: 240px; 
-    max-width: 240px; 
+    background-color: rgba(21, 26, 33, 180); /* Leichte Transparenz */
+    border-right: 1px solid #262E38; 
+    min-width: 250px; 
+    max-width: 250px; 
 }
 
 QListWidget#sidebarNav { 
-    background-color: #000000; 
-    border: 2px inset #444; 
-    margin: 4px;
+    background-color: transparent; 
+    border: none; 
+    outline: none; 
+    padding: 10px;
 }
 QListWidget#sidebarNav::item { 
-    color: #00FF00; 
-    min-height: 28px; max-height: 28px; 
-    padding-left: 8px; 
-    font-weight: bold; 
+    color: #A0A6AD; 
+    min-height: 48px; max-height: 48px; 
+    padding-left: 12px; margin: 4px 8px; 
+    border-radius: 8px; 
+    font-size: 15px; font-weight: 600; 
 }
 QListWidget#sidebarNav::item:hover { 
-    background-color: #222222; 
-}
-QListWidget#sidebarNav::item:selected { 
-    background-color: #000088; /* Classic Winamp Select Blue */
+    background-color: #20262F; 
     color: #FFFFFF; 
 }
+QListWidget#sidebarNav::item:selected { 
+    background-color: rgba(61, 220, 99, 0.15); /* Glow background */
+    color: #3DDC63; 
+    font-weight: 700; 
+    border: 1px solid rgba(61, 220, 99, 0.3); /* Leichter Rahmen als Glow */
+}
 
-/* 2. BIBLIOTHEK / PLAYLIST (Winamp Playlist Look) */
+/* BIBLIOTHEK */
 QTableView, QListWidget { 
-    background-color: #000000; 
-    border: 2px inset #5C5E78; 
-    selection-background-color: #0000AA; 
-    selection-color: #FFFFFF; 
+    background-color: #151A21; 
+    border: 1px solid #262E38; 
+    border-radius: 12px; 
+    selection-background-color: #20262F; 
+    selection-color: #3DDC63; 
     gridline-color: transparent;
-    color: #00FF00;
+    outline: none; 
 }
-QTableView::item { border-bottom: none; padding: 2px 6px; }
-QTableView::item:selected { background-color: #0000AA; color: #FFFFFF; }
+QTableView::item { 
+    border-bottom: 1px solid #262E38; 
+    padding: 8px 12px; 
+    color: #FFFFFF; 
+}
+QTableView::item:hover { 
+    background-color: #20262F; 
+}
+QTableView::item:selected { 
+    background-color: #20262F; 
+    color: #3DDC63; 
+}
 QHeaderView::section { 
-    background-color: #C3C7D3; /* Silver Button */
-    color: #000000; 
-    border: 2px outset #DFE3EE; 
-    padding: 2px 6px; 
-    font-family: "Arial", sans-serif;
-    font-size: 11px;
-    font-weight: bold; 
+    background-color: #0B0D11; 
+    color: #A0A6AD; 
+    border: none; 
+    border-bottom: 1px solid #262E38; 
+    padding: 10px 12px; 
+    font-weight: 600; 
+    font-size: 13px; 
 }
 
-/* 3. BUTTONS (Silver 3D Look) */
+/* BUTTONS & TOOLBAR */
 QPushButton { 
-    background-color: #C3C7D3; 
-    border: 2px outset #DFE3EE; 
-    border-radius: 0px; 
-    min-height: 24px; padding: 2px 10px; 
-    color: #000000; font-family: "Arial", sans-serif; font-size: 11px; font-weight: bold; 
+    background-color: transparent; 
+    border: none; 
+    border-radius: 8px; 
+    min-height: 36px; padding: 6px 14px; 
+    color: #FFFFFF; font-size: 14px; font-weight: 500; 
+}
+QPushButton:hover { 
+    background-color: #20262F; 
 }
 QPushButton:pressed { 
-    border: 2px inset #DFE3EE; 
-    background-color: #A3A7B3; 
-    padding: 3px 9px 1px 11px; /* Shift text for 3D press */
+    background-color: #151A21; 
 }
 
-/* Spezielle Player-Buttons (Shuffle, Vorher, Play, etc.) */
-QPushButton#playerBtn, QPushButton#playPauseBtn {
-    background-color: #C3C7D3; 
-    border: 2px outset #DFE3EE; 
-    border-radius: 0px; 
+/* Primary Button / Play Button */
+QPushButton#playPauseBtn { 
+    background-color: #3DDC63; 
+    border-radius: 28px; 
+    min-width: 56px; min-height: 56px; max-width: 56px; max-height: 56px; 
+    padding: 0;
 }
-QPushButton#playerBtn:pressed, QPushButton#playPauseBtn:pressed {
-    border: 2px inset #DFE3EE; 
-    background-color: #A3A7B3; 
+QPushButton#playPauseBtn:hover { 
+    background-color: #48E76E; 
+    border: 2px solid rgba(61, 220, 99, 0.5); /* Glow */
 }
-QPushButton#accent { background-color: #C3C7D3; border: 2px outset #DFE3EE; color: #000000; }
-QPushButton#accent:pressed { border: 2px inset #DFE3EE; }
+QPushButton#accent { 
+    background-color: #3DDC63; border-radius: 8px; color: #121212; font-weight: 600; 
+}
+QPushButton#accent:hover { background-color: #48E76E; }
 
-/* 4. PLAYER BAR (Winamp Main Window) */
+/* PLAYER BAR */
 QFrame#playerBar { 
-    background-color: #242635; 
-    border: 2px outset #5C5E78; 
-    border-radius: 0px; 
+    background-color: rgba(5, 7, 10, 0.85); /* Schwarze Glasfläche */
+    border: 1px solid #262E38; 
+    border-radius: 16px; 
+    margin: 10px;
 }
 /* Display Screen inside Player */
 QFrame#playerBar QWidget {
-    color: #00FF00;
+    color: #FFFFFF;
 }
 
-/* 5. SLIDERS (Timeline orange/brownish, Volume green) */
+/* SLIDERS */
 QSlider::groove:horizontal { 
-    border: 1px inset #444; 
-    height: 8px; background: #000000; 
+    border: none; 
+    height: 6px; background: #262E38; border-radius: 3px; 
 }
 QSlider::sub-page:horizontal { 
-    background: #E58700; /* Winamp Orange */
+    background: #3DDC63; 
+    border-radius: 3px; 
 }
 QSlider::handle:horizontal { 
-    background: #C3C7D3; 
-    border: 2px outset #DFE3EE; 
-    width: 14px; height: 16px; margin: -5px 0; 
+    background: #FFFFFF; 
+    border: none; width: 14px; height: 14px; margin: -4px 0; border-radius: 7px; 
 }
+QSlider::handle:horizontal:hover { width: 16px; height: 16px; margin: -5px 0; background: #3DDC63; }
 
-/* Volume Slider */
-QSlider#volumeSlider::sub-page:horizontal { background: #00FF00; }
-
-/* 6. INPUTS & CARDS */
+/* INPUTS & CARDS */
 QFrame#card, QFrame#toolbarFrame, QFrame#detailsPanel { 
-    background-color: #242635; 
-    border: 2px outset #5C5E78; 
-    border-radius: 0px; 
+    background-color: rgba(21, 26, 33, 200); /* Acrylic / Glass */
+    border: 1px solid #262E38; 
+    border-radius: 12px; 
 }
 QLineEdit, QComboBox { 
-    background-color: #000000; 
-    border: 2px inset #5C5E78; 
-    border-radius: 0px; 
-    color: #00FF00; 
+    background-color: #0B0D11; 
+    border: 1px solid #262E38; 
+    border-radius: 8px; 
+    min-height: 38px; padding: 6px 12px; 
+    color: #FFFFFF; 
 }
-QLabel#secondary { color: #00AA00; }
+QLineEdit:focus, QComboBox:focus {
+    border-color: #3DDC63;
+}
+
+QLabel#secondary { color: #A0A6AD; }
+QLabel#metaBadge { background-color: #20262F; color: #3DDC63; border: 1px solid #262E38; border-radius: 6px; padding: 4px 8px; font-weight: 600; }
 
 /* Menus */
-QMenu { background-color: #C3C7D3; border: 2px outset #DFE3EE; color: #000000; font-family: "Arial", sans-serif; }
-QMenu::item { padding: 4px 16px; }
-QMenu::item:selected { background-color: #0000AA; color: #FFFFFF; }
+QMenu { background-color: #151A21; border: 1px solid #262E38; border-radius: 8px; color: #FFFFFF; padding: 4px; }
+QMenu::item { padding: 8px 24px 8px 12px; border-radius: 4px; margin: 2px; }
+QMenu::item:selected { background-color: #20262F; color: #3DDC63; }

@@ -2043,7 +2043,7 @@ class MusicWindow(QMainWindow):
         self.now_artist.setObjectName("secondary")
         self.now_artist.setStyleSheet("font-size: 11px;")
         self.now_audio_info = QLabel("320 kbps | 44.1 kHz | Stereo")
-        self.now_audio_info.setStyleSheet("color: #00FF00; font-family: monospace; font-size: 10px;")
+        self.now_audio_info.setStyleSheet("color: #3DDC63; font-family: monospace; font-size: 10px;")
         self.now_audio_info.hide()
         
         meta_box.addWidget(self.now_title)
@@ -2116,8 +2116,8 @@ class MusicWindow(QMainWindow):
         timeline.addWidget(self.time_total)
         center.addLayout(timeline)
         
-        self.visualizer_lbl = QLabel(" ▄▃▆▅▇▄▃▂ ")
-        self.visualizer_lbl.setStyleSheet("color: #00FF00; background: #000000; font-family: monospace; font-size: 14px; letter-spacing: 2px; padding: 2px 10px; border: 2px inset #5C5E78;")
+        self.visualizer_lbl = QLabel(" ılı.lıllılı.ıllı ")
+        self.visualizer_lbl.setStyleSheet("color: #3DDC63; background: transparent; font-size: 16px; font-weight: bold; letter-spacing: 2px;")
         self.visualizer_lbl.setAlignment(Qt.AlignCenter)
         center.addWidget(self.visualizer_lbl)
 
