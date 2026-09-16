@@ -42,6 +42,54 @@ class ClickableSlider(QSlider):
         super().mousePressEvent(event)
 
 
+from PySide6.QtWidgets import QStyledItemDelegate, QStyle
+from PySide6.QtCore import QRect
+class GridCardDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index):
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        rect = option.rect
+        rect.adjust(8, 8, -8, -8)  # Card gaps
+        
+        path = QPainterPath()
+        path.addRoundedRect(rect, 8, 8)
+        
+        is_hover = option.state & QStyle.State_MouseOver
+        bg_color = QColor("#222832") if is_hover else QColor("#161a20")
+        painter.fillPath(path, bg_color)
+        
+        track = index.data(Qt.UserRole)
+        if track:
+            icon = index.data(Qt.DecorationRole)
+            if icon:
+                pixmap = icon.pixmap(140, 140)
+                img_x = rect.x() + (rect.width() - 140) // 2
+                img_y = rect.y() + 10
+                painter.drawPixmap(QRect(img_x, img_y, 140, 140), pixmap)
+                
+            title = track.get("title") or "Unbekannt"
+            artist = track.get("artist") or "Unbekannt"
+            
+            painter.setFont(option.font)
+            fm = QFontMetrics(option.font)
+            text_rect = QRect(rect.x() + 10, rect.y() + 158, rect.width() - 20, 18)
+            elided_title = fm.elidedText(title, Qt.ElideRight, text_rect.width())
+            painter.setPen(QColor("#FFFFFF"))
+            painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignTop, elided_title)
+            
+            artist_font = option.font
+            artist_font.setPixelSize(11)
+            painter.setFont(artist_font)
+            fm_art = QFontMetrics(artist_font)
+            artist_rect = QRect(rect.x() + 10, rect.y() + 178, rect.width() - 20, 16)
+            elided_artist = fm_art.elidedText(artist, Qt.ElideRight, artist_rect.width())
+            painter.setPen(QColor("#a7a7a7"))
+            painter.drawText(artist_rect, Qt.AlignLeft | Qt.AlignTop, elided_artist)
+            
+        painter.restore()
+
+
 def time_text(seconds: float) -> str:
     seconds = int(seconds or 0)
     return f"{seconds // 60}:{seconds % 60:02d}"
@@ -1498,9 +1546,11 @@ class MusicWindow(QMainWindow):
         grid = QListWidget()
         grid.setViewMode(QListWidget.IconMode)
         grid.setIconSize(QSize(140, 140))
-        grid.setGridSize(QSize(170, 210))
+        grid.setGridSize(QSize(186, 226))
         grid.setResizeMode(QListWidget.Adjust)
-        grid.setSpacing(12)
+        grid.setSpacing(0)
+        grid.setViewportMargins(8, 8, 8, 8)
+        grid.setItemDelegate(GridCardDelegate(grid))
         grid.itemDoubleClicked.connect(lambda item, m=model: self._on_grid_double_click(item, m))
         grid.itemClicked.connect(lambda item: self.show_track_details(item.data(Qt.UserRole)))
 
