@@ -14,16 +14,17 @@ from PySide6.QtCore import (QAbstractTableModel, QModelIndex, QObject, QRunnable
 from PySide6.QtGui import (QAction, QColor, QDesktopServices, QIcon, QKeySequence, QPainter,
                            QPainterPath, QPixmap, QShortcut)
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
-from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog, QFileDialog,
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog, QFileDialog,
                              QFrame, QHBoxLayout, QHeaderView, QInputDialog,
                              QLabel, QLineEdit, QListWidget, QListWidgetItem,
                              QMainWindow, QMenu, QMessageBox, QProgressBar,
                              QPushButton, QSlider, QStackedWidget, QTableView,
                              QVBoxLayout, QWidget)
+import urllib.parse
 
 from database import MusicDatabase
 from downloader import DownloadCancelled, MusicDownloader
-from metadata import find_or_fetch_cover, safe_name
+from metadata import TrackMetadata, find_or_fetch_cover, safe_name
 
 
 class ClickableSlider(QSlider):
@@ -258,6 +259,51 @@ class DownloadQueueModel(QAbstractTableModel):
             self.dataChanged.emit(idx1, idx2)
 
 
+class SearchResultModel(QAbstractTableModel):
+    headers = ["Cover", "Titel", "Künstler / Kanal", "Dauer", "Typ"]
+
+    def __init__(self, rows: list[dict] | None = None):
+        super().__init__()
+        self.rows = rows or []
+
+    def rowCount(self, parent=QModelIndex()):
+        return len(self.rows)
+
+    def columnCount(self, parent=QModelIndex()):
+        return len(self.headers)
+
+    def headerData(self, section, orientation, role=Qt.DisplayRole):
+        if orientation == Qt.Horizontal and role == Qt.DisplayRole:
+            return self.headers[section]
+        return None
+
+    def data(self, index, role=Qt.DisplayRole):
+        if not index.isValid():
+            return None
+        row, col = index.row(), index.column()
+        item = self.rows[row]
+        if col == 0 and role == Qt.DecorationRole:
+            return get_cover_pixmap(item.get("cover_url", ""), 48)
+        if role == Qt.DisplayRole:
+            if col == 1:
+                return item.get("title", "")
+            if col == 2:
+                return item.get("artist", "")
+            if col == 3:
+                d = item.get("duration", 0)
+                return time_text(d) if d else "--:--"
+            if col == 4:
+                return item.get("type", "🎵 Song")
+        if role == Qt.TextAlignmentRole and col == 3:
+            return int(Qt.AlignRight | Qt.AlignVCenter)
+        return None
+
+    def set_rows(self, rows):
+        self.beginResetModel()
+        self.rows = list(rows)
+        self.endResetModel()
+
+
 class Signals(QObject):
     done = Signal(object)
     error = Signal(str)
@@ -265,6 +311,67 @@ class Signals(QObject):
     status = Signal(int, str)
     sync_progress = Signal(int, int, str)
     cover_progress = Signal(int, int, str)
+
+
+class SearchTask(QRunnable):
+    def __init__(self, query: str, filter_type: str = "all"):
+        super().__init__()
+        self.query = query
+        self.filter_type = filter_type
+        self.signals = Signals()
+
+    def run(self):
+        try:
+            import yt_dlp
+            options = {
+                "quiet": True,
+                "extract_flat": True,
+                "skip_download": True,
+                "no_warnings": True,
+            }
+            if self.filter_type == "playlist":
+                target = f"https://www.youtube.com/results?search_query={urllib.parse.quote(self.query)}&sp=EgIQAw%253D%253D"
+            else:
+                target = f"ytsearch25:{self.query}"
+
+            with yt_dlp.YoutubeDL(options) as ydl:
+                info = ydl.extract_info(target, download=False)
+
+            raw_entries = info.get("entries", []) if isinstance(info, dict) else [info]
+            results = []
+            for e in raw_entries:
+                if not e:
+                    continue
+                v_id = e.get("id", "")
+                url = e.get("url") or e.get("webpage_url") or ""
+                is_pl = (e.get("_type") == "playlist") or ("playlist" in url) or (self.filter_type == "playlist")
+                if self.filter_type == "video" and is_pl:
+                    continue
+                if self.filter_type == "playlist" and not is_pl:
+                    continue
+                if not url.startswith("http"):
+                    if is_pl:
+                        url = f"https://www.youtube.com/playlist?list={v_id}"
+                    else:
+                        url = f"https://www.youtube.com/watch?v={v_id}"
+
+                thumbs = e.get("thumbnails", [])
+                thumb_url = thumbs[-1].get("url") if thumbs else (f"https://img.youtube.com/vi/{v_id}/hqdefault.jpg" if v_id else "")
+
+                results.append({
+                    "id": v_id,
+                    "title": e.get("title") or "Unbekannter Titel",
+                    "artist": e.get("uploader") or e.get("channel") or "Unbekannter Artist",
+                    "duration": e.get("duration") or 0,
+                    "url": url,
+                    "cover_url": thumb_url,
+                    "is_playlist": is_pl,
+                    "type": "📋 Playlist" if is_pl else "🎵 Song"
+                })
+
+            self.signals.done.emit(results)
+        except Exception as exc:
+            self.signals.error.emit(str(exc))
 
 
 class AnalyzeTask(QRunnable):
@@ -526,7 +633,7 @@ class MusicWindow(QMainWindow):
         self.f5_shortcut = QShortcut(QKeySequence("F5"), self)
         self.f5_shortcut.activated.connect(self.run_sync_library)
 
-        header.addWidget(self._button("⚙ Einstellungen", lambda: self.show_page(5)))
+        header.addWidget(self._button("⚙ Einstellungen", lambda: self.show_page(6)))
         main_layout.addLayout(header)
 
         # 2. Main Area: Sidebar + Content Area + Collapsible Details Panel
@@ -546,10 +653,11 @@ class MusicWindow(QMainWindow):
         self.nav.setSpacing(6)
         nav_items = [
             ("🎵   Downloader", 0),
-            ("📚   Bibliothek", 1),
-            ("❤️   Favoriten", 2),
-            ("📋   Playlists", 3),
-            ("⬇   Downloads", 4),
+            ("🔍   Entdecken", 1),
+            ("📚   Bibliothek", 2),
+            ("❤️   Favoriten", 3),
+            ("📋   Playlists", 4),
+            ("⬇   Downloads", 5),
         ]
         for title, _ in nav_items:
             item = QListWidgetItem(title)
@@ -566,12 +674,13 @@ class MusicWindow(QMainWindow):
 
         # Stacked Pages
         self.pages = QStackedWidget()
-        self.pages.addWidget(self._downloader_page())   # 0
-        self.pages.addWidget(self._library_page(False))  # 1
-        self.pages.addWidget(self._library_page(True))   # 2
-        self.pages.addWidget(self._playlists_page())     # 3
-        self.pages.addWidget(self._queue_page())         # 4
-        self.pages.addWidget(self._settings_page())      # 5
+        self.pages.addWidget(self._downloader_page())   # 0: Link-Import
+        self.pages.addWidget(self._discover_page())     # 1: YouTube-Suche / Entdecken
+        self.pages.addWidget(self._library_page(False))  # 2: Bibliothek
+        self.pages.addWidget(self._library_page(True))   # 3: Favoriten
+        self.pages.addWidget(self._playlists_page())     # 4: Playlists
+        self.pages.addWidget(self._queue_page())         # 5: Downloads
+        self.pages.addWidget(self._settings_page())      # 6: Einstellungen
         content_box.addWidget(self.pages, 1)
 
         body.addLayout(content_box, 1)
@@ -585,7 +694,7 @@ class MusicWindow(QMainWindow):
 
         # Bottom Mini Player
         main_layout.addWidget(self._player_bar())
-        self.nav.setCurrentRow(1)
+        self.nav.setCurrentRow(2)
 
     def refresh_dashboard(self):
         stats = self.db.dashboard_stats(self.music_root)
@@ -781,8 +890,11 @@ class MusicWindow(QMainWindow):
         self.links.returnPressed.connect(self.analyze)
         self.analyze_btn = self._button("🔍 Analysieren", self.analyze, True)
         self.analyze_btn.setFixedWidth(140)
+        self.to_discover_btn = self._button("🔍 Zur YouTube-Suche", lambda: self.nav.setCurrentRow(1))
+        self.to_discover_btn.setToolTip("Direkt in YouTube suchen ohne Browser")
         input_row.addWidget(self.links, 1)
         input_row.addWidget(self.analyze_btn)
+        input_row.addWidget(self.to_discover_btn)
         layout.addLayout(input_row)
 
         # Actions & Filter Bar
@@ -817,6 +929,190 @@ class MusicWindow(QMainWindow):
     def _toggle_all_preview(self):
         all_checked = len(self.pre_model.checked) == len(self.pre_model.rows) and len(self.pre_model.rows) > 0
         self.set_checked(not all_checked)
+
+    def _discover_page(self) -> QWidget:
+        page = QFrame()
+        page.setObjectName("card")
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(14)
+
+        # Header Title & Subtitle
+        header_box = QVBoxLayout()
+        header_box.setSpacing(3)
+        header_title = QLabel("🔍 Musik entdecken & direkt suchen")
+        header_title.setStyleSheet("font-size: 18px; font-weight: 700; color: #F4F4F4;")
+        header_sub = QLabel("Finde Songs, Alben, Playlists oder Künstler direkt auf YouTube – ohne Browser.")
+        header_sub.setObjectName("secondary")
+        header_box.addWidget(header_title)
+        header_box.addWidget(header_sub)
+        layout.addLayout(header_box)
+
+        # Search Input + Button Row
+        search_row = QHBoxLayout()
+        search_row.setSpacing(10)
+        self.discover_input = QLineEdit()
+        self.discover_input.setPlaceholderText("Suchbegriff eingeben (z. B. The Weeknd, Hans Zimmer, Lofi Beats Playlist) …")
+        self.discover_input.returnPressed.connect(self.run_youtube_search)
+        self.discover_btn = self._button("🔍 Suchen", self.run_youtube_search, True)
+        self.discover_btn.setFixedWidth(140)
+        search_row.addWidget(self.discover_input, 1)
+        search_row.addWidget(self.discover_btn)
+        layout.addLayout(search_row)
+
+        # Filter Pills Bar (Alle / Songs / Playlists)
+        filter_row = QHBoxLayout()
+        filter_row.setSpacing(8)
+        self.discover_filter = "all"
+
+        self.disc_filter_all = QPushButton("Alle")
+        self.disc_filter_songs = QPushButton("🎵 Songs")
+        self.disc_filter_playlists = QPushButton("📋 Playlists")
+
+        self.disc_filter_buttons = {
+            "all": self.disc_filter_all,
+            "video": self.disc_filter_songs,
+            "playlist": self.disc_filter_playlists,
+        }
+
+        for f_key, b in self.disc_filter_buttons.items():
+            b.setObjectName("chipBtn")
+            b.setProperty("active", "true" if f_key == "all" else "false")
+            b.clicked.connect(lambda _, k=f_key: self._set_discover_filter(k))
+            filter_row.addWidget(b)
+
+        filter_row.addStretch()
+
+        self.discover_status = QLabel("Bereit zum Suchen.")
+        self.discover_status.setObjectName("secondary")
+        filter_row.addWidget(self.discover_status)
+
+        self.disc_action_btn = self._button("⬇ Ausgewählten Treffer herunterladen", self._download_selected_search_result, True)
+        filter_row.addWidget(self.disc_action_btn)
+        layout.addLayout(filter_row)
+
+        # Results Table
+        self.discover_model = SearchResultModel()
+        self.discover_table = QTableView()
+        self.discover_table.setModel(self.discover_model)
+        self.discover_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.discover_table.verticalHeader().setDefaultSectionSize(60)
+        self.discover_table.verticalHeader().setVisible(False)
+
+        h = self.discover_table.horizontalHeader()
+        h.setSectionResizeMode(0, QHeaderView.Fixed)
+        self.discover_table.setColumnWidth(0, 56)
+        h.setSectionResizeMode(1, QHeaderView.Stretch)
+        h.setSectionResizeMode(2, QHeaderView.Interactive)
+        self.discover_table.setColumnWidth(2, 220)
+        h.setSectionResizeMode(3, QHeaderView.Fixed)
+        self.discover_table.setColumnWidth(3, 80)
+        h.setSectionResizeMode(4, QHeaderView.Fixed)
+        self.discover_table.setColumnWidth(4, 110)
+
+        self.discover_table.doubleClicked.connect(self._on_search_result_double_clicked)
+        self.discover_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.discover_table.customContextMenuRequested.connect(self._search_context_menu)
+
+        layout.addWidget(self.discover_table, 1)
+        return page
+
+    def _set_discover_filter(self, filter_key: str):
+        self.discover_filter = filter_key
+        for k, b in self.disc_filter_buttons.items():
+            b.setProperty("active", "true" if k == filter_key else "false")
+            b.style().unpolish(b)
+            b.style().polish(b)
+        if self.discover_input.text().strip():
+            self.run_youtube_search()
+
+    def run_youtube_search(self):
+        query = self.discover_input.text().strip()
+        if not query:
+            return
+        self.discover_status.setText(f"Suche nach „{query}“ …")
+        self.discover_btn.setEnabled(False)
+        task = SearchTask(query, self.discover_filter)
+        task.signals.done.connect(self._on_search_done)
+        task.signals.error.connect(self._on_search_error)
+        self.pool.start(task)
+
+    def _on_search_done(self, results: list):
+        self.discover_btn.setEnabled(True)
+        self.discover_model.set_rows(results)
+        self.discover_status.setText(f"{len(results)} Treffer gefunden.")
+
+    def _on_search_error(self, err: str):
+        self.discover_btn.setEnabled(True)
+        self.discover_status.setText("Suche fehlgeschlagen.")
+        QMessageBox.warning(self, "Suchfehler", f"Fehler bei der YouTube-Suche:\n{err}")
+
+    def _on_search_result_double_clicked(self, idx: QModelIndex):
+        if not idx.isValid() or idx.row() >= len(self.discover_model.rows):
+            return
+        res = self.discover_model.rows[idx.row()]
+        self._handle_search_hit(res)
+
+    def _download_selected_search_result(self):
+        indexes = self.discover_table.selectionModel().selectedRows()
+        if not indexes:
+            QMessageBox.information(self, "Keine Auswahl", "Bitte wähle zuerst einen Treffer aus der Tabelle aus.")
+            return
+        row = indexes[0].row()
+        res = self.discover_model.rows[row]
+        self._handle_search_hit(res)
+
+    def _handle_search_hit(self, res: dict):
+        if res.get("is_playlist"):
+            self.links.setText(res["url"])
+            self.nav.setCurrentRow(0)
+            self.analyze()
+        else:
+            track = TrackMetadata(
+                title=res["title"],
+                artist=res["artist"],
+                cover_url=res.get("cover_url", ""),
+                source_url=res["url"],
+                duration=res.get("duration", 0),
+                collection="Einzeltitel"
+            )
+            self.cancelled.clear()
+            self.resumed.set()
+            self.paused = False
+
+            q_idx = self.queue_model.add_task(
+                track.title,
+                track.artist,
+                track.cover_url,
+                playlist="Single",
+                track_obj=track
+            )
+            task = DownloadTask(
+                track, -1, q_idx, 1, 1,
+                self.music_root, self.db, self.cancelled, self.resumed
+            )
+            task.signals.progress.connect(self._on_download_progress)
+            task.signals.status.connect(self._on_download_status)
+            self.pool.start(task)
+            self.update_queue_stats()
+            self.nav.setCurrentRow(5)
+
+    def _search_context_menu(self, point):
+        idx = self.discover_table.indexAt(point)
+        if not idx.isValid() or idx.row() >= len(self.discover_model.rows):
+            return
+        res = self.discover_model.rows[idx.row()]
+        menu = QMenu(self)
+
+        if res.get("is_playlist"):
+            menu.addAction("📋  Playlist in Downloader analysieren", lambda: self._handle_search_hit(res))
+        else:
+            menu.addAction("⬇  Song herunterladen", lambda: self._handle_search_hit(res))
+            menu.addAction("📋  In Downloader einfügen", lambda: (self.links.setText(res["url"]), self.nav.setCurrentRow(0)))
+
+        menu.addAction("🔗  YouTube-Link kopieren", lambda: QApplication.clipboard().setText(res["url"]))
+        menu.addAction("🌐  Im Browser öffnen", lambda: QDesktopServices.openUrl(QUrl(res["url"])))
+        menu.exec(self.discover_table.viewport().mapToGlobal(point))
 
     def _library_page(self, favorites: bool) -> QWidget:
         page = QFrame()
@@ -1456,9 +1752,9 @@ class MusicWindow(QMainWindow):
 
     def show_page(self, index: int):
         self.pages.setCurrentIndex(index)
-        if index in (1, 2):
+        if index in (2, 3):
             self.refresh_library()
-        elif index == 3:
+        elif index == 4:
             self.refresh_playlists()
 
     def on_search_changed(self, text: str):
@@ -1509,7 +1805,7 @@ class MusicWindow(QMainWindow):
         self.cancelled.clear()
         self.resumed.set()
         self.paused = False
-        self.nav.setCurrentRow(4)
+        self.nav.setCurrentRow(5)
 
         for step, (row_idx, track) in enumerate(items, 1):
             q_idx = self.queue_model.add_task(
@@ -1533,9 +1829,11 @@ class MusicWindow(QMainWindow):
         self.queue_summary.setText(f"Aktuell: {title} | Speed: {speed} | Restzeit: {eta}")
 
     def _on_download_status(self, row_idx: int, status: str):
-        self.pre_model.status[row_idx] = status
-        idx = self.pre_model.index(row_idx, 8)
-        self.pre_model.dataChanged.emit(idx, idx)
+        if 0 <= row_idx < len(self.pre_model.rows):
+            self.pre_model.status[row_idx] = status
+            idx = self.pre_model.index(row_idx, 8)
+            self.pre_model.dataChanged.emit(idx, idx)
+        self.update_queue_stats()
         self.refresh_library()
         self.refresh_dashboard()
 
@@ -1673,7 +1971,7 @@ class MusicWindow(QMainWindow):
     def refresh_library(self):
         active_search = (
             self.fav_search.text().strip()
-            if self.pages.currentIndex() == 2 and hasattr(self, "fav_search")
+            if self.pages.currentIndex() == 3 and hasattr(self, "fav_search")
             else (self.lib_search.text().strip() if hasattr(self, "lib_search") else "")
         )
         all_tracks = self.db.tracks(active_search, filter_chip=self.current_chip)
@@ -1857,7 +2155,7 @@ class MusicWindow(QMainWindow):
 
     def _jump_to_current_playlist(self):
         if self.current_playlist_name:
-            self.show_page(3)
+            self.nav.setCurrentRow(4)
             self._open_playlist_detail(self.current_playlist_name)
 
     def _toggle_mute(self):

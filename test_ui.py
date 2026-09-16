@@ -44,10 +44,22 @@ def test_full_ui():
         win = MusicWindow(db, root)
         win.show()
 
-        # Check pages
-        assert win.pages.count() == 6
-        for p_idx in range(6):
+        # Check pages (Downloader, Entdecken, Bibliothek, Favoriten, Playlists, Downloads, Einstellungen)
+        assert win.pages.count() == 7
+        for p_idx in range(7):
             win.show_page(p_idx)
+
+        # Check Discover (YouTube-Suche) components
+        assert hasattr(win, "discover_input")
+        assert hasattr(win, "discover_btn")
+        assert hasattr(win, "discover_model")
+        assert hasattr(win, "disc_filter_buttons")
+        win._set_discover_filter("video")
+        assert win.discover_filter == "video"
+        win._set_discover_filter("playlist")
+        assert win.discover_filter == "playlist"
+        win._set_discover_filter("all")
+        assert win.discover_filter == "all"
 
         # Check Details panel
         assert hasattr(win, "details_panel")
@@ -93,3 +105,4 @@ def test_full_ui():
 
 if __name__ == "__main__":
     test_full_ui()
+
