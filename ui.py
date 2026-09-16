@@ -2116,8 +2116,8 @@ class MusicWindow(QMainWindow):
         timeline.addWidget(self.time_total)
         center.addLayout(timeline)
         
-        self.visualizer_lbl = QLabel("||||||| VISUALIZER |||||||")
-        self.visualizer_lbl.setStyleSheet("color: #00FF00; font-family: monospace; font-size: 10px; font-weight: bold;")
+        self.visualizer_lbl = QLabel(" ▄▃▆▅▇▄▃▂ ")
+        self.visualizer_lbl.setStyleSheet("color: #00FF00; background: #000000; font-family: monospace; font-size: 14px; letter-spacing: 2px; padding: 2px 10px; border: 2px inset #5C5E78;")
         self.visualizer_lbl.setAlignment(Qt.AlignCenter)
         center.addWidget(self.visualizer_lbl)
 
@@ -2136,6 +2136,7 @@ class MusicWindow(QMainWindow):
 
         saved_vol = int(float(self.settings.get("volume", "75")))
         self.vol_slider = QSlider(Qt.Horizontal)
+        self.vol_slider.setObjectName("volumeSlider")
         self.vol_slider.setFixedWidth(110)
         self.vol_slider.setRange(0, 100)
         self.vol_slider.setValue(saved_vol)
