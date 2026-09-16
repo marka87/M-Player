@@ -1560,6 +1560,7 @@ class MusicWindow(QMainWindow):
         grid = QListWidget()
         grid.setViewMode(QListWidget.IconMode)
         grid.setIconSize(QSize(140, 140))
+        grid.setGridSize(QSize(186, 226))
         grid.setResizeMode(QListWidget.Adjust)
         grid.setSpacing(0)
         grid.setViewportMargins(8, 8, 8, 8)
@@ -2176,16 +2177,11 @@ class MusicWindow(QMainWindow):
         timeline.addWidget(self.time_total)
         center.addLayout(timeline)
         
-        self.visualizer_lbl = QLabel(" ılı.lıllılı.ıllı ")
-        self.visualizer_lbl.setStyleSheet("color: #3DDC63; background: transparent; font-size: 16px; font-weight: bold; letter-spacing: 2px;")
-        self.visualizer_lbl.setAlignment(Qt.AlignCenter)
-        center.addWidget(self.visualizer_lbl)
+        layout.addWidget(center_widget, 0)
 
-        layout.addWidget(center_widget, 1)
-
-        # Right Zone: Volume Control (Fixed 180px)
+        # Right Zone: Volume Control
         right_widget = QWidget()
-        right_widget.setFixedWidth(180)
+        right_widget.setMinimumWidth(180)
         right = QHBoxLayout(right_widget)
         right.setContentsMargins(0, 0, 0, 0)
         right.setSpacing(8)
@@ -2195,16 +2191,17 @@ class MusicWindow(QMainWindow):
         self.vol_btn.setToolTip("Stummschalten / Wiederherstellen")
 
         saved_vol = int(float(self.settings.get("volume", "75")))
-        self.vol_slider = QSlider(Qt.Horizontal)
+        self.vol_slider = ClickableSlider(Qt.Horizontal)
         self.vol_slider.setObjectName("volumeSlider")
-        self.vol_slider.setFixedWidth(110)
         self.vol_slider.setRange(0, 100)
         self.vol_slider.setValue(saved_vol)
+        self.vol_slider.setFixedWidth(110)
         self.vol_slider.valueChanged.connect(self._on_volume_changed)
 
         right.addWidget(self.vol_btn)
         right.addWidget(self.vol_slider)
-        layout.addWidget(right_widget)
+        
+        layout.addWidget(right_widget, 1)
 
         self.player.positionChanged.connect(self._on_position_changed)
         self.player.durationChanged.connect(self._on_duration_changed)
