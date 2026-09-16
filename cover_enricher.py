@@ -8,13 +8,14 @@ and embeds them via Mutagen ID3 APIC frames.
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
 from pathlib import Path
 from typing import Callable
 import urllib.parse
 import urllib.request
+
+from metadata import safe_name
 
 import mutagen
 from mutagen.id3 import ID3, APIC, ID3NoHeaderError
@@ -156,9 +157,8 @@ class CoverEnricher:
         # Check .covers cache if music_root is available
         if music_root:
             cache_dir = Path(music_root) / ".covers"
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            safe_a = "".join(c if c.isalnum() or c in " -_" else "_" for c in artist).strip() or "artist"
-            safe_al = "".join(c if c.isalnum() or c in " -_" else "_" for c in eff_album).strip() or "album"
+            safe_a = safe_name(artist, "artist")
+            safe_al = safe_name(eff_album, "album")
             cache_file = cache_dir / f"{safe_a}-{safe_al}.jpg"
             if cache_file.exists() and cache_file.stat().st_size > 1024:
                 return cache_file.read_bytes(), "image/jpeg"
@@ -199,8 +199,8 @@ class CoverEnricher:
             try:
                 cache_dir = Path(music_root) / ".covers"
                 cache_dir.mkdir(parents=True, exist_ok=True)
-                safe_a = "".join(c if c.isalnum() or c in " -_" else "_" for c in artist).strip() or "artist"
-                safe_al = "".join(c if c.isalnum() or c in " -_" else "_" for c in album).strip() or "album"
+                safe_a = safe_name(artist, "artist")
+                safe_al = safe_name(album, "album")
                 (cache_dir / f"{safe_a}-{safe_al}.jpg").write_bytes(data)
             except OSError:
                 pass
@@ -354,49 +354,4 @@ class CoverEnricher:
                 stats["failed"] += 1
 
         return stats
-
-
-# =========================================================================
-# 4. STANDALONE CLI ENTRYPOINT
-# =========================================================================
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Enrich MP3 files with high-resolution album artwork (iTunes, Deezer, MusicBrainz)."
-    )
-    parser.add_argument("path", type=Path, help="Path to an MP3 file or a directory containing MP3 files.")
-    parser.add_argument("--force", "-f", action="store_true", help="Overwrite existing album artwork.")
-    parser.add_argument("--no-recursive", action="store_true", help="Do not scan subdirectories.")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed logging.")
-
-    args = parser.parse_args()
-    logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s: %(message)s")
-
-    enricher = CoverEnricher()
-    target = args.path
-
-    if target.is_file():
-        print(f"Processing single file: {target.name} ...")
-        success = enricher.enrich_file(target, force=args.force)
-        print("✓ Cover successfully embedded!" if success else "✗ Cover could not be enriched.")
-    elif target.is_dir():
-        print(f"Scanning directory: {target} ...")
-        stats = enricher.enrich_directory(
-            target,
-            force=args.force,
-            recursive=not args.no_recursive,
-            callback=lambda i, tot, name: print(f"[{i}/{tot}] Checking: {name}")
-        )
-        print("\n" + "=" * 40)
-        print(f"Total files:    {stats['total']}")
-        print(f"Enriched:       {stats['enriched']}")
-        print(f"Skipped:        {stats['skipped']}")
-        print(f"Failed/Missing: {stats['failed']}")
-        print("=" * 40)
-    else:
-        print(f"Error: Path '{target}' does not exist.")
-
-
-if __name__ == "__main__":
-    main()
 

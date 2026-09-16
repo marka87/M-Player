@@ -40,6 +40,10 @@ class MusicDatabase:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tracks_artist ON tracks(artist)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tracks_album ON tracks(album)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tracks_genre ON tracks(genre)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_tracks_favorite ON tracks(favorite)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_tracks_added ON tracks(added_at DESC)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_tracks_play_count ON tracks(play_count)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_tracks_collection ON tracks(collection)")
             conn.execute("CREATE TABLE IF NOT EXISTS playlists (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
             conn.execute("""CREATE TABLE IF NOT EXISTS playlist_tracks (
                 playlist_id INTEGER NOT NULL, track_id INTEGER NOT NULL, position INTEGER NOT NULL,
@@ -225,8 +229,7 @@ class MusicDatabase:
 
     def save_settings_dict(self, data: dict) -> None:
         with self._connection() as conn:
-            for k, v in data.items():
-                conn.execute("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (k, str(v)))
+            conn.executemany("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [(k, str(v)) for k, v in data.items()])
 
     def delete_track(self, track_id: int, delete_file: bool = False) -> bool:
         with self._connection() as conn:
@@ -307,12 +310,19 @@ class MusicDatabase:
                         title=title, artist=artist, album=album, year=year,
                         genre=genre, collection=collection
                     )
-                    self.upsert(track, file_path, duration=duration, bitrate=bitrate)
+                    conn.execute("""INSERT INTO tracks (title, artist, album, year, track_number, genre, source_url, file_path, duration, bitrate, collection)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(file_path) DO UPDATE SET
+                        title=excluded.title, artist=excluded.artist, album=excluded.album, year=excluded.year,
+                        track_number=excluded.track_number, genre=excluded.genre, source_url=excluded.source_url,
+                        duration=excluded.duration, bitrate=excluded.bitrate, collection=excluded.collection""",
+                        (track.title, track.artist, track.album, track.year, track.track_number, track.genre, track.source_url, str(file_path), duration, bitrate, track.collection))
                     if collection and collection not in ("Einzeltitel", "Single", music_root.name, ".covers"):
-                        with self._connection() as c2:
-                            t_row = c2.execute("SELECT id FROM tracks WHERE file_path = ?", (str(file_path),)).fetchone()
-                            if t_row:
-                                self.add_to_playlist(collection, t_row[0])
+                        t_row = conn.execute("SELECT id FROM tracks WHERE file_path = ?", (str(file_path),)).fetchone()
+                        if t_row:
+                            conn.execute("INSERT OR IGNORE INTO playlists(name) VALUES (?)", (collection.strip(),))
+                            pl_id = conn.execute("SELECT id FROM playlists WHERE name = ?", (collection.strip(),)).fetchone()[0]
+                            pos = conn.execute("SELECT COALESCE(MAX(position), 0) + 1 FROM playlist_tracks WHERE playlist_id = ?", (pl_id,)).fetchone()[0]
+                            conn.execute("INSERT OR IGNORE INTO playlist_tracks(playlist_id, track_id, position) VALUES (?, ?, ?)", (pl_id, t_row[0], pos))
                     added += 1
                 except Exception:
                     continue

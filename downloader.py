@@ -228,13 +228,6 @@ class MusicDownloader:
             ffmpeg_path = shutil.which("ffmpeg")
             if ffmpeg_path:
                 options["ffmpeg_location"] = str(Path(ffmpeg_path).parent)
-            else:
-                for cand in Path.home().glob("AppData/Local/Microsoft/WinGet/Packages/*FFmpeg*/**/ffmpeg.exe"):
-                    if cand.is_file():
-                        bin_dir = str(cand.parent)
-                        options["ffmpeg_location"] = bin_dir
-                        os.environ["PATH"] = f"{bin_dir};{os.environ.get('PATH', '')}"
-                        break
             try:
                 with yt_dlp.YoutubeDL(options) as ydl:
                     info = ydl.extract_info(track.source_url, download=True)

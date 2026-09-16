@@ -10,7 +10,7 @@ import threading
 from pathlib import Path
 
 from PySide6.QtCore import (QAbstractTableModel, QModelIndex, QObject, QRunnable,
-                            QSize, Qt, QThreadPool, QUrl, Signal)
+                            QSize, Qt, QThreadPool, QTimer, QUrl, Signal)
 from PySide6.QtGui import (QAction, QColor, QDesktopServices, QIcon, QKeySequence, QPainter,
                            QPainterPath, QPixmap, QShortcut)
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
@@ -24,7 +24,7 @@ import urllib.parse
 
 from database import MusicDatabase
 from downloader import DownloadCancelled, MusicDownloader
-from metadata import TrackMetadata, find_or_fetch_cover, safe_name
+from metadata import TrackMetadata, safe_name
 
 
 class ClickableSlider(QSlider):
@@ -703,6 +703,12 @@ class MusicWindow(QMainWindow):
 
         # Active library filter chip
         self.current_chip = "Alle"
+        self._lib_grid_dirty = False
+        self._fav_grid_dirty = False
+        self.search_timer = QTimer(self)
+        self.search_timer.setSingleShot(True)
+        self.search_timer.setInterval(220)
+        self.search_timer.timeout.connect(self.refresh_library)
 
         self._build_ui()
 
@@ -1305,8 +1311,18 @@ class MusicWindow(QMainWindow):
 
         # View Toggle Buttons
         view_stack = QStackedWidget()
-        list_toggle = self._button("Liste", lambda: view_stack.setCurrentIndex(0), obj_name="toolbarBtn", icon=get_icon("view-list"), icon_size=QSize(16, 16))
-        grid_toggle = self._button("Raster", lambda: view_stack.setCurrentIndex(1), obj_name="toolbarBtn", icon=get_icon("view-grid"), icon_size=QSize(16, 16))
+
+        def _show_grid(vs=view_stack, is_fav=favorites):
+            vs.setCurrentIndex(1)
+            if is_fav and getattr(self, "_fav_grid_dirty", False):
+                self._populate_grid(self.fav_grid, self.fav_model.rows)
+                self._fav_grid_dirty = False
+            elif not is_fav and getattr(self, "_lib_grid_dirty", False):
+                self._populate_grid(self.lib_grid, self.lib_model.rows)
+                self._lib_grid_dirty = False
+
+        list_toggle = self._button("Liste", lambda vs=view_stack: vs.setCurrentIndex(0), obj_name="toolbarBtn", icon=get_icon("view-list"), icon_size=QSize(16, 16))
+        grid_toggle = self._button("Raster", _show_grid, obj_name="toolbarBtn", icon=get_icon("view-grid"), icon_size=QSize(16, 16))
         tb_layout.addWidget(list_toggle)
         tb_layout.addWidget(grid_toggle)
 
@@ -1417,10 +1433,12 @@ class MusicWindow(QMainWindow):
 
         if favorites:
             self.fav_model, self.fav_table, self.fav_grid, self.fav_search = model, table, grid, search_input
+            self.fav_view_stack = view_stack
             self.fav_stats_lbl = stats_lbl
             self.fav_content_stack = content_stack
         else:
             self.lib_model, self.lib_table, self.lib_grid, self.lib_search = model, table, grid, search_input
+            self.lib_view_stack = view_stack
             self.lib_stats_lbl = stats_lbl
             self.lib_content_stack = content_stack
         return page
@@ -1926,7 +1944,7 @@ class MusicWindow(QMainWindow):
             self.refresh_playlists()
 
     def on_search_changed(self, text: str):
-        self.refresh_library()
+        self.search_timer.start()
 
     def analyze(self):
         urls = [u for u in self.links.text().split() if u.startswith("http")]
@@ -2148,8 +2166,18 @@ class MusicWindow(QMainWindow):
 
         self.lib_model.set_rows(all_tracks)
         self.fav_model.set_rows(fav_tracks)
-        self._populate_grid(self.lib_grid, all_tracks)
-        self._populate_grid(self.fav_grid, fav_tracks)
+
+        if hasattr(self, "lib_view_stack") and self.lib_view_stack.currentIndex() == 1:
+            self._populate_grid(self.lib_grid, all_tracks)
+            self._lib_grid_dirty = False
+        else:
+            self._lib_grid_dirty = True
+
+        if hasattr(self, "fav_view_stack") and self.fav_view_stack.currentIndex() == 1:
+            self._populate_grid(self.fav_grid, fav_tracks)
+            self._fav_grid_dirty = False
+        else:
+            self._fav_grid_dirty = True
 
         if hasattr(self, "lib_content_stack"):
             self.lib_content_stack.setCurrentIndex(1 if len(all_tracks) == 0 else 0)
