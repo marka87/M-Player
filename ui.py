@@ -54,17 +54,51 @@ def format_size(bytes_val: int | float) -> str:
     return f"{bytes_val:.1f} TB"
 
 
-@functools.lru_cache(maxsize=400)
+@functools.lru_cache(maxsize=600)
 def get_cover_pixmap(cover_source: str, size: int = 48) -> QPixmap:
     pix = QPixmap()
     if cover_source:
-        p = Path(cover_source)
-        if p.is_file():
-            pix.load(str(p))
-        elif p.is_dir() and (p / "cover.jpg").exists():
-            pix.load(str(p / "cover.jpg"))
-        elif (p.parent / "cover.jpg").exists():
-            pix.load(str(p.parent / "cover.jpg"))
+        if cover_source.startswith(("http://", "https://")):
+            try:
+                import hashlib, tempfile, urllib.request
+                h = hashlib.md5(cover_source.encode()).hexdigest()
+                cached = Path(tempfile.gettempdir()) / "mplayer_thumbs" / f"{h}.jpg"
+                if cached.is_file() and cached.stat().st_size > 0:
+                    pix.load(str(cached))
+                else:
+                    cached.parent.mkdir(parents=True, exist_ok=True)
+                    req = urllib.request.Request(cover_source, headers={"User-Agent": "Mozilla/5.0"})
+                    with urllib.request.urlopen(req, timeout=1.5) as resp:
+                        c_data = resp.read()
+                    if c_data:
+                        cached.write_bytes(c_data)
+                        pix.loadFromData(c_data)
+            except Exception:
+                pass
+        else:
+            p = Path(cover_source)
+            if p.is_file():
+                if p.suffix.lower() == ".mp3":
+                    # 1. Folder cover.jpg
+                    if (p.parent / "cover.jpg").is_file():
+                        pix.load(str(p.parent / "cover.jpg"))
+                    # 2. Embedded ID3 APIC frame
+                    if pix.isNull():
+                        try:
+                            from mutagen.id3 import ID3
+                            tags = ID3(p)
+                            for apic in tags.getall("APIC"):
+                                if apic.data:
+                                    pix.loadFromData(apic.data)
+                                    break
+                        except Exception:
+                            pass
+                else:
+                    pix.load(str(p))
+            elif p.is_dir() and (p / "cover.jpg").exists():
+                pix.load(str(p / "cover.jpg"))
+            elif (p.parent / "cover.jpg").exists():
+                pix.load(str(p.parent / "cover.jpg"))
 
     if pix.isNull():
         pix = QPixmap(size, size)
@@ -303,6 +337,15 @@ class SearchResultModel(QAbstractTableModel):
         self.rows = list(rows)
         self.endResetModel()
 
+    def append_rows(self, new_rows: list):
+        if not new_rows:
+            return
+        start_row = len(self.rows)
+        end_row = start_row + len(new_rows) - 1
+        self.beginInsertRows(QModelIndex(), start_row, end_row)
+        self.rows.extend(new_rows)
+        self.endInsertRows()
+
 
 class Signals(QObject):
     done = Signal(object)
@@ -314,25 +357,30 @@ class Signals(QObject):
 
 
 class SearchTask(QRunnable):
-    def __init__(self, query: str, filter_type: str = "all"):
+    def __init__(self, query: str, filter_type: str = "all", start: int = 1, limit: int = 30):
         super().__init__()
         self.query = query
         self.filter_type = filter_type
+        self.start = start
+        self.limit = limit
         self.signals = Signals()
 
     def run(self):
         try:
             import yt_dlp
+            end = self.start + self.limit - 1
             options = {
                 "quiet": True,
                 "extract_flat": True,
                 "skip_download": True,
                 "no_warnings": True,
+                "playliststart": self.start,
+                "playlistend": end,
             }
             if self.filter_type == "playlist":
                 target = f"https://www.youtube.com/results?search_query={urllib.parse.quote(self.query)}&sp=EgIQAw%253D%253D"
             else:
-                target = f"ytsearch25:{self.query}"
+                target = f"ytsearch{end}:{self.query}"
 
             with yt_dlp.YoutubeDL(options) as ydl:
                 info = ydl.extract_info(target, download=False)
@@ -1013,9 +1061,15 @@ class MusicWindow(QMainWindow):
         self.discover_table.doubleClicked.connect(self._on_search_result_double_clicked)
         self.discover_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.discover_table.customContextMenuRequested.connect(self._search_context_menu)
+        self.discover_table.verticalScrollBar().valueChanged.connect(self._on_search_scroll)
 
         layout.addWidget(self.discover_table, 1)
         return page
+
+    def _on_search_scroll(self, val: int):
+        sb = self.discover_table.verticalScrollBar()
+        if sb.maximum() > 0 and val >= sb.maximum() - 2:
+            self._load_more_search_results()
 
     def _set_discover_filter(self, filter_key: str):
         self.discover_filter = filter_key
@@ -1030,19 +1084,51 @@ class MusicWindow(QMainWindow):
         query = self.discover_input.text().strip()
         if not query:
             return
+        self.discover_query = query
+        self.discover_loading = True
+        self.discover_has_more = True
         self.discover_status.setText(f"Suche nach „{query}“ …")
         self.discover_btn.setEnabled(False)
-        task = SearchTask(query, self.discover_filter)
+        task = SearchTask(query, self.discover_filter, start=1, limit=30)
         task.signals.done.connect(self._on_search_done)
         task.signals.error.connect(self._on_search_error)
         self.pool.start(task)
 
     def _on_search_done(self, results: list):
+        self.discover_loading = False
         self.discover_btn.setEnabled(True)
         self.discover_model.set_rows(results)
+        if len(results) < 30:
+            self.discover_has_more = False
         self.discover_status.setText(f"{len(results)} Treffer gefunden.")
 
+    def _load_more_search_results(self):
+        if getattr(self, "discover_loading", False) or not getattr(self, "discover_has_more", True):
+            return
+        query = getattr(self, "discover_query", "")
+        if not query:
+            return
+        self.discover_loading = True
+        cur_count = len(self.discover_model.rows)
+        self.discover_status.setText(f"{cur_count} Treffer (lädt weitere nach …)")
+        task = SearchTask(query, self.discover_filter, start=cur_count + 1, limit=30)
+        task.signals.done.connect(self._on_search_more_done)
+        task.signals.error.connect(lambda _: setattr(self, "discover_loading", False))
+        self.pool.start(task)
+
+    def _on_search_more_done(self, new_results: list):
+        self.discover_loading = False
+        if not new_results:
+            self.discover_has_more = False
+            self.discover_status.setText(f"{len(self.discover_model.rows)} Treffer (alle geladen).")
+            return
+        if len(new_results) < 30:
+            self.discover_has_more = False
+        self.discover_model.append_rows(new_results)
+        self.discover_status.setText(f"{len(self.discover_model.rows)} Treffer geladen.")
+
     def _on_search_error(self, err: str):
+        self.discover_loading = False
         self.discover_btn.setEnabled(True)
         self.discover_status.setText("Suche fehlgeschlagen.")
         QMessageBox.warning(self, "Suchfehler", f"Fehler bei der YouTube-Suche:\n{err}")
@@ -1833,6 +1919,7 @@ class MusicWindow(QMainWindow):
             self.pre_model.status[row_idx] = status
             idx = self.pre_model.index(row_idx, 8)
             self.pre_model.dataChanged.emit(idx, idx)
+        get_cover_pixmap.cache_clear()
         self.update_queue_stats()
         self.refresh_library()
         self.refresh_dashboard()

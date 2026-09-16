@@ -221,11 +221,33 @@ class MusicDownloader:
                 track.cover_url = info.get("thumbnail") or ""
             if track.artist == "Unbekannter Artist":
                 track.artist = info.get("artist") or info.get("uploader") or track.artist
+            if track.artist.endswith(" - Topic"):
+                track.artist = track.artist[:-8].strip()
+            if (not track.artist or track.artist == "Unbekannter Artist") and " - " in track.title:
+                parts = track.title.split(" - ", 1)
+                track.artist = parts[0].strip()
+                track.title = parts[1].strip()
             if track.album == "Unbekanntes Album":
                 track.album = info.get("album") or track.album
             if not track.year:
                 track.year = str(info.get("release_year") or info.get("upload_date", "")[:4])
-            cover = write_id3(files[0], track)
+
+            # High-res cover enrichment during download (iTunes 1000x1000, Deezer, MusicBrainz)
+            cover_data = None
+            try:
+                from cover_enricher import CoverEnricher
+                enricher = CoverEnricher(timeout=5)
+                clean_title = re.sub(r'\(.*?\)|\[.*?\]', '', track.title).strip()
+                cover_data = enricher.find_cover(
+                    track.artist, track.album,
+                    source_url=track.source_url,
+                    music_root=self.library_root,
+                    title=clean_title
+                )
+            except Exception:
+                pass
+
+            cover = write_id3(files[0], track, cover_override=cover_data)
             destination = target_path(self.library_root, track)
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination = self._unused_path(destination)

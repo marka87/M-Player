@@ -100,6 +100,26 @@ def test_full_ui():
         assert hasattr(win, "chk_auto_sync_pl")
         win.save_settings()
 
+        # Check Discover pagination & append_rows
+        initial_hits = [{"id": "1", "title": "Song 1", "artist": "Artist 1", "duration": 120, "url": "https://...", "cover_url": "", "is_playlist": False, "type": "🎵 Song"}]
+        win.discover_model.set_rows(initial_hits)
+        assert win.discover_model.rowCount() == 1
+        more_hits = [{"id": "2", "title": "Song 2", "artist": "Artist 2", "duration": 180, "url": "https://...", "cover_url": "", "is_playlist": False, "type": "🎵 Song"}]
+        win._on_search_more_done(more_hits)
+        assert win.discover_model.rowCount() == 2
+
+        # Check cover resolution for MP3 files (embedded & folder cover.jpg)
+        from ui import get_cover_pixmap
+        # Test folder cover.jpg
+        test_cover = f1.parent / "cover.jpg"
+        from PySide6.QtGui import QPixmap
+        pix = QPixmap(10, 10)
+        pix.fill()
+        pix.save(str(test_cover), "JPG")
+        get_cover_pixmap.cache_clear()
+        cov = get_cover_pixmap(str(f1), 48)
+        assert not cov.isNull()
+
         win.close()
         print("All UI tests passed successfully!")
 

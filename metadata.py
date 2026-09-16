@@ -66,7 +66,7 @@ def download_cover(url: str) -> tuple[bytes, str] | None:
         return None
 
 
-def write_id3(path: Path, track: TrackMetadata) -> tuple[bytes, str] | None:
+def write_id3(path: Path, track: TrackMetadata, cover_override: tuple[bytes, str] | None = None) -> tuple[bytes, str] | None:
     MP3(path).info  # Reject a renamed WebM/AAC file before it reaches the library.
     try:
         tags = ID3(path)
@@ -84,7 +84,7 @@ def write_id3(path: Path, track: TrackMetadata) -> tuple[bytes, str] | None:
         tags["TRCK"] = TRCK(encoding=3, text=str(track.track_number))
     if track.genre:
         tags["TCON"] = TCON(encoding=3, text=track.genre)
-    cover = download_cover(track.cover_url)
+    cover = cover_override or download_cover(track.cover_url)
     if cover:
         data, mime = cover
         tags.add(APIC(encoding=3, mime=mime, type=3, desc="Cover", data=data))

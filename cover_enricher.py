@@ -43,7 +43,7 @@ class CoverEnricher:
         if not query:
             return None
 
-        url = f"https://itunes.apple.com/search?term={urllib.parse.quote(query)}&entity=album&limit=3"
+        url = f"https://itunes.apple.com/search?term={urllib.parse.quote(query)}&media=music&limit=3"
         try:
             req = urllib.request.Request(url, headers={"User-Agent": self.USER_AGENT})
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
@@ -54,12 +54,14 @@ class CoverEnricher:
                 return None
 
             # Get best match artwork URL and upgrade resolution
-            artwork_url = results[0].get("artworkUrl100", "")
-            if not artwork_url:
-                return None
-
-            hi_res_url = artwork_url.replace("100x100bb.jpg", f"{resolution}x{resolution}bb.jpg")
-            return self._download_bytes(hi_res_url)
+            for r in results:
+                artwork_url = r.get("artworkUrl100", "")
+                if artwork_url:
+                    hi_res_url = artwork_url.replace("100x100bb.jpg", f"{resolution}x{resolution}bb.jpg")
+                    img = self._download_bytes(hi_res_url)
+                    if img:
+                        return img
+            return None
         except Exception as err:
             logger.debug("iTunes API lookup failed for '%s': %s", query, err)
             return None
@@ -92,19 +94,21 @@ class CoverEnricher:
             return None
 
     def fetch_deezer_cover(self, artist: str, album: str) -> bytes | None:
-        """Fallback API: Queries Deezer's public album API for 500x500/1000x1000 art."""
+        """Fallback API: Queries Deezer's public API for 1000x1000 art."""
         query = f"{artist} {album}".strip()
-        url = f"https://api.deezer.com/search/album?q={urllib.parse.quote(query)}&limit=1"
+        url = f"https://api.deezer.com/search?q={urllib.parse.quote(query)}&limit=3"
         try:
             req = urllib.request.Request(url, headers={"User-Agent": self.USER_AGENT})
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
 
             items = data.get("data", [])
-            if items:
-                img_url = items[0].get("cover_xl") or items[0].get("cover_big")
+            for item in items:
+                img_url = item.get("album", {}).get("cover_xl") or item.get("album", {}).get("cover_big") or item.get("cover_xl")
                 if img_url:
-                    return self._download_bytes(img_url)
+                    img = self._download_bytes(img_url)
+                    if img:
+                        return img
         except Exception as err:
             logger.debug("Deezer API lookup failed for '%s': %s", query, err)
         return None
@@ -125,7 +129,7 @@ class CoverEnricher:
                 return data
         return None
 
-    def find_cover(self, artist: str, album: str, source_url: str = "", music_root: Path | None = None) -> tuple[bytes, str] | None:
+    def find_cover(self, artist: str, album: str, source_url: str = "", music_root: Path | None = None, title: str = "") -> tuple[bytes, str] | None:
         """
         Executes multi-tier fallback search:
         1. Local cache (.covers/)
@@ -134,39 +138,46 @@ class CoverEnricher:
         4. Deezer API (1000x1000px)
         5. YouTube Thumbnail
         """
+        # If album is unknown, try title as query
+        eff_album = title if (not album or album in ("Unbekanntes Album", "Einzeltitel", "Single")) and title else album
+
         # Check .covers cache if music_root is available
         if music_root:
             cache_dir = Path(music_root) / ".covers"
             cache_dir.mkdir(parents=True, exist_ok=True)
             safe_a = "".join(c if c.isalnum() or c in " -_" else "_" for c in artist).strip() or "artist"
-            safe_al = "".join(c if c.isalnum() or c in " -_" else "_" for c in album).strip() or "album"
+            safe_al = "".join(c if c.isalnum() or c in " -_" else "_" for c in eff_album).strip() or "album"
             cache_file = cache_dir / f"{safe_a}-{safe_al}.jpg"
             if cache_file.exists() and cache_file.stat().st_size > 1024:
                 return cache_file.read_bytes(), "image/jpeg"
 
         # 3 & 4. MusicBrainz & Cover Art Archive
-        img_bytes = self.fetch_musicbrainz_cover(artist, album)
+        img_bytes = self.fetch_musicbrainz_cover(artist, eff_album)
         if img_bytes:
-            self._save_cache(music_root, artist, album, img_bytes)
+            self._save_cache(music_root, artist, eff_album, img_bytes)
             return img_bytes, "image/jpeg"
 
         # 5. iTunes Artwork API (Up to 1000x1000)
-        img_bytes = self.fetch_itunes_cover(artist, album)
+        img_bytes = self.fetch_itunes_cover(artist, eff_album)
+        if not img_bytes and title and eff_album != title:
+            img_bytes = self.fetch_itunes_cover(artist, title)
         if img_bytes:
-            self._save_cache(music_root, artist, album, img_bytes)
+            self._save_cache(music_root, artist, eff_album, img_bytes)
             return img_bytes, "image/jpeg"
 
         # 6. Deezer API (Up to 1000x1000)
-        img_bytes = self.fetch_deezer_cover(artist, album)
+        img_bytes = self.fetch_deezer_cover(artist, eff_album)
+        if not img_bytes and title and eff_album != title:
+            img_bytes = self.fetch_deezer_cover(artist, title)
         if img_bytes:
-            self._save_cache(music_root, artist, album, img_bytes)
+            self._save_cache(music_root, artist, eff_album, img_bytes)
             return img_bytes, "image/jpeg"
 
         # 7. YouTube Thumbnail
         if source_url:
             img_bytes = self.fetch_youtube_cover(source_url)
             if img_bytes:
-                self._save_cache(music_root, artist, album, img_bytes)
+                self._save_cache(music_root, artist, eff_album, img_bytes)
                 return img_bytes, "image/jpeg"
 
         return None
