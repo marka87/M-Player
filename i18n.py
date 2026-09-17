@@ -249,6 +249,175 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
     "btn_retry": {"de": "Wiederholen", "en": "Retry", "hu": "Újra"},
     "btn_cancel": {"de": "Abbrechen", "en": "Cancel", "hu": "Mégse"},
 
+    # Downloads Combined Tabs
+    "dl_tab_discover": {
+        "de": "Suchen / Entdecken",
+        "en": "Search / Discover",
+        "hu": "Keresés / Felfedezés",
+    },
+    "dl_tab_downloader": {
+        "de": "Link-Download",
+        "en": "Link Download",
+        "hu": "Link letöltése",
+    },
+    "dl_tab_queue": {
+        "de": "Downloads & Warteschlange",
+        "en": "Downloads & Queue",
+        "hu": "Letöltések & Várólista",
+    },
+
+    # Tools Page
+    "tools_title": {
+        "de": "Bibliothek & Metadaten Tools",
+        "en": "Library & Metadata Tools",
+        "hu": "Könyvtár és Metaadat Eszközök",
+    },
+    "tools_sub": {
+        "de": "Werkzeuge zur Pflege und Bereinigung deiner Musikbibliothek.",
+        "en": "Tools for maintenance and cleanup of your music library.",
+        "hu": "Eszközök a zenei könyvtár karbantartásához és tisztításához.",
+    },
+    "tools_search_covers": {
+        "de": "Albumcover suchen",
+        "en": "Search Album Covers",
+        "hu": "Albumborítók keresése",
+    },
+    "tools_sync_library": {
+        "de": "Bibliothek synchronisieren",
+        "en": "Synchronize Library",
+        "hu": "Könyvtár szinkronizálása",
+    },
+    "tools_find_duplicates": {
+        "de": "Duplikate finden",
+        "en": "Find Duplicates",
+        "hu": "Duplikátumok keresése",
+    },
+    "tools_clean_tags": {
+        "de": "Tags bereinigen (Auto-Clean)",
+        "en": "Clean Tags (Auto-Clean)",
+        "hu": "Címkék tisztítása (Auto-Clean)",
+    },
+
+    # Empty State & Extra Buttons
+    "btn_to_downloader": {
+        "de": "Zum Downloader",
+        "en": "To Downloader",
+        "hu": "A letöltőhöz",
+    },
+    "btn_open_folder": {
+        "de": "Musikordner öffnen",
+        "en": "Open Music Folder",
+        "hu": "Zenei mappa megnyitása",
+    },
+
+    # Filter Chip Menus
+    "no_artists_found": {
+        "de": "Keine Künstler in der Bibliothek",
+        "en": "No artists in library",
+        "hu": "Nincsenek előadók a könyvtárban",
+    },
+    "no_years_found": {
+        "de": "Keine Jahre in der Bibliothek",
+        "en": "No years in library",
+        "hu": "Nincsenek évek a könyvtárban",
+    },
+    "no_genres_found": {
+        "de": "Keine Genres in der Bibliothek",
+        "en": "No genres in library",
+        "hu": "Nincsenek műfajok a könyvtárban",
+    },
+
+    # Context Menu & Discover Actions
+    "discover_analyze_pl": {
+        "de": "Playlist im Downloader analysieren",
+        "en": "Analyze playlist in downloader",
+        "hu": "Lejátszási lista elemzése a letöltőben",
+    },
+    "ctx_preview_stream": {
+        "de": "Vorhören (Direct Stream)",
+        "en": "Preview (Direct Stream)",
+        "hu": "Előhallgatás (Közvetlen stream)",
+    },
+    "ctx_show_similar": {
+        "de": "Ähnliche Songs anzeigen",
+        "en": "Show Similar Songs",
+        "hu": "Hasonló dalok megjelenítése",
+    },
+    "ctx_add_to_downloader": {
+        "de": "In Downloader einfügen",
+        "en": "Insert into Downloader",
+        "hu": "Beillesztés a letöltőbe",
+    },
+    "ctx_copy_link": {
+        "de": "Link kopieren",
+        "en": "Copy Link",
+        "hu": "Link másolása",
+    },
+    "ctx_open_browser": {
+        "de": "Im Browser öffnen",
+        "en": "Open in Browser",
+        "hu": "Megnyitás böngészőben",
+    },
+
+    # Duplicate Finder Dialog Texts
+    "dup_heading": {
+        "de": "Gefundene Duplikate ({groups} Gruppen, {tracks} überzählige Songs)",
+        "en": "Duplicates found ({groups} groups, {tracks} redundant songs)",
+        "hu": "Talált duplikátumok ({groups} csoport, {tracks} felesleges dal)",
+    },
+    "dup_sub": {
+        "de": "Wähle für jede Gruppe die Version aus, die du behalten möchtest. Der empfohlene Song (beste Audioqualität) ist vorausgewählt.",
+        "en": "Choose the version you want to keep for each group. The recommended track (best audio quality) is preselected.",
+        "hu": "Válaszd ki minden csoportnál a megtartandó verziót. Az ajánlott dal (legjobb minőség) előre ki van jelölve.",
+    },
+    "dup_group_header": {
+        "de": "Gruppe {num}: {name}",
+        "en": "Group {num}: {name}",
+        "hu": "{num}. csoport: {name}",
+    },
+    "dup_recommended": {
+        "de": "Empfohlen",
+        "en": "Recommended",
+        "hu": "Ajánlott",
+    },
+    "dup_preview_song": {
+        "de": "Song vorhören",
+        "en": "Preview song",
+        "hu": "Dal előhallgatása",
+    },
+    "dup_details": {
+        "de": "Dauer: {dur} · Bitrate: {bitrate}{size} · {file}",
+        "en": "Duration: {dur} · Bitrate: {bitrate}{size} · {file}",
+        "hu": "Hossz: {dur} · Bitráta: {bitrate}{size} · {file}",
+    },
+
+    # Action Notifications
+    "tags_cleaned_title": {
+        "de": "Tags bereinigt",
+        "en": "Tags Cleaned",
+        "hu": "Címkék tisztítva",
+    },
+    "tags_cleaned_msg": {
+        "de": "{count} Song(s) erfolgreich bereinigt.",
+        "en": "{count} song(s) successfully cleaned.",
+        "hu": "{count} dal sikeresen megtisztítva.",
+    },
+    "tags_cleaned_single": {
+        "de": "Titel und Interpret wurden bereinigt.",
+        "en": "Title and artist have been cleaned.",
+        "hu": "A cím és előadó megtisztítva.",
+    },
+    "duplicates_cleaned_title": {
+        "de": "Duplikate bereinigt",
+        "en": "Duplicates Cleaned",
+        "hu": "Duplikátumok törölve",
+    },
+    "duplicates_cleaned_msg": {
+        "de": "{count} Duplikat(e) wurden erfolgreich bereinigt.",
+        "en": "{count} duplicate(s) successfully cleaned.",
+        "hu": "{count} duplikátum sikeresen eltávolítva.",
+    },
+
     # Playlists Page
     "playlists_title": {"de": "Playlists", "en": "Playlists", "hu": "Lejátszási listák"},
     "btn_new_playlist": {"de": "＋ Neue Playlist anlegen", "en": "＋ Create New Playlist", "hu": "＋ Új lejátszási lista"},
