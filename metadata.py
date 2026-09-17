@@ -172,8 +172,34 @@ def read_audio_tags(file_path: Path) -> TrackMetadata:
     )
 
 
+ARTIST_PATTERNS = [
+    # Topic suffixes: "U2 - Topic", "Solomun - Topic", "Artist (Topic)", "Artist [Topic]"
+    r'\s*[-–—]?\s*[\(\[\{]?\s*topic\s*[\)\]\}]?\s*$',
+    # Official suffixes in brackets/parentheses: "Solomun (Official)", "Artist [Official Channel]"
+    r'\s*[-–—]?\s*[\(\[\{]\s*official(?:\s*(?:channel|music|page|video|audio))?\s*[\)\]\}]\s*$',
+    # Suffixes with dash: "Artist - Official", "Artist - Official Channel"
+    r'\s*[-–—]\s*official(?:\s*(?:channel|music|page|video|audio))?\s*$',
+    # Suffix word: "Artist Official"
+    r'\s+official\s*$',
+    # VEVO suffixes: "TheWeekndVEVO" -> "TheWeeknd", "Artist VEVO" -> "Artist", "Artist - VEVO"
+    r'(?<=[a-zA-Z0-9])\s*[-–—]?\s*vevo\b',
+    # Channel suffix: "Artist - Channel", "Artist Channel"
+    r'\s*[-–—]?\s*[\(\[\{]?\s*channel\s*[\)\]\}]?\s*$',
+]
+
+TITLE_PATTERNS = [
+    # Video/Audio tags in parentheses, brackets or braces
+    r'[\(\[\{]\s*(?:(?:official\s*)?(?:video\s*clip|music\s*video|lyric\s*video|hd\s*video|video|audio|visualizer)|official|clip\s*officiel|video\s*clip|lyrics?|hq|hd|4k|1080p|720p|explicit|extended\s*mix|remastered(?:\s*\d{4})?|live(?:\s*at\s*[^)\]]+)?|prod\.\s*[^)\]]+|free\s*download|out\s*now)\s*[\)\]\}]',
+    # Trailing pipe or slash annotations
+    r'\|.*$',
+    r'//.*$',
+    # Standalone trailing suffixes: " - Official Video", " - Lyric Video", " - Audio", etc.
+    r'\s+[-–—]\s*(?:(?:official\s*)?(?:video\s*clip|music\s*video|lyric\s*video|hd\s*video|video|audio|visualizer)|clip\s*officiel)\s*$',
+]
+
+
 def clean_artist_title(raw_title: str, raw_artist: str = "") -> tuple[str, str]:
-    """Clean video/download artifacts from titles and extract artist if combined."""
+    """Clean video/download artifacts from titles and artist fields."""
     title = (raw_title or "").strip()
     artist = (raw_artist or "").strip()
 
@@ -183,24 +209,31 @@ def clean_artist_title(raw_title: str, raw_artist: str = "") -> tuple[str, str]:
     if "_" in artist:
         artist = artist.replace("_", " ")
 
-    # Remove common video / audio suffixes in parentheses or brackets
-    patterns = [
-        r'[\(\[\{]\s*(?:official\s*(?:video|audio|music\s*video|hd\s*video|visualizer|lyric\s*video)|video\s*clip|clip\s*officiel|official|lyrics?|audio|hq|hd|4k|1080p|720p|explicit|extended\s*mix|remastered(?:\s*\d{4})?|live(?:\s*at\s*[^)\]]+)?|prod\.\s*[^)\]]+)\s*[\)\]\}]',
-        r'\|.*$',
-    ]
-    for pat in patterns:
+    # Clean artist using patterns
+    for pat in ARTIST_PATTERNS:
+        artist = re.sub(pat, "", artist, flags=re.IGNORECASE).strip()
+
+    # Clean title using patterns
+    for pat in TITLE_PATTERNS:
         title = re.sub(pat, "", title, flags=re.IGNORECASE).strip()
 
-    # If title has "Artist - Title" format and artist is empty or generic
+    # If title has "Artist - Title" format and artist is empty, generic or matching
     split_match = re.split(r'\s+[-–—]\s+', title, maxsplit=1)
     if len(split_match) == 2:
         cand_artist, cand_title = split_match[0].strip(), split_match[1].strip()
         if cand_artist and cand_title:
-            if not artist or artist in ("Unbekannter Artist", "Unbekannt", "YouTube", cand_artist):
-                artist = cand_artist
+            cleaned_cand_artist = cand_artist
+            for pat in ARTIST_PATTERNS:
+                cleaned_cand_artist = re.sub(pat, "", cleaned_cand_artist, flags=re.IGNORECASE).strip()
+
+            if (not artist
+                or artist in ("Unbekannter Artist", "Unbekannt", "YouTube")
+                or cleaned_cand_artist.lower() == artist.lower()
+                or cleaned_cand_artist.replace(" ", "").lower() == artist.replace(" ", "").lower()):
+                artist = cleaned_cand_artist or cand_artist
                 title = cand_title
 
-    # Clean dangling dashes or extra spaces
+    # Clean dangling dashes, quotes or extra spaces
     title = re.sub(r'\s+', ' ', title).strip(" -–—\"'[]()")
     artist = re.sub(r'\s+', ' ', artist).strip(" -–—\"'[]()")
 
@@ -237,3 +270,83 @@ def clean_track_id3(file_path: Path, db=None) -> tuple[str, str]:
             pass
 
     return clean_title, clean_artist
+
+
+import functools
+
+
+@functools.lru_cache(maxsize=512)
+def resolve_album_online(artist: str, title: str, timeout: float = 3.5) -> tuple[str | None, str | None]:
+    """
+    Attempts to identify the album and release year for a song using:
+    1. iTunes Search API (fast, clean collectionName)
+    2. MusicBrainz REST API (fallback, ranked by official studio release)
+    Returns (album_title, release_year) or (None, None).
+    """
+    clean_t, clean_a = clean_artist_title(title, artist)
+    if not clean_t or not clean_a or clean_a in ("Unbekannter Artist", "Unbekannt", "YouTube"):
+        return None, None
+
+    # Strategy 1: iTunes Search API
+    try:
+        import requests
+        query = f"{clean_a} {clean_t}".strip()
+        resp = requests.get(
+            "https://itunes.apple.com/search",
+            params={"term": query, "media": "music", "entity": "song", "limit": 3},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=timeout
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            for r in data.get("results", []):
+                album = r.get("collectionName")
+                date = (r.get("releaseDate") or "")[:4]
+                if album and album.strip():
+                    return album.strip(), date or None
+    except Exception:
+        pass
+
+    # Strategy 2: MusicBrainz REST API (Fallback)
+    try:
+        import requests
+        mb_query = f'recording:"{clean_t}" AND artistname:"{clean_a}"'
+        resp = requests.get(
+            "https://musicbrainz.org/ws/2/recording/",
+            params={"query": mb_query, "fmt": "json", "limit": 15},
+            headers={"User-Agent": "MPlayer/2.0 (https://github.com/marka87/Musikapp)"},
+            timeout=timeout
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            candidates = []
+            type_scores = {"Album": 30, "EP": 15, "Single": 5}
+            for rec in data.get("recordings", []):
+                for rel in rec.get("releases", []):
+                    rel_title = rel.get("title", "").strip()
+                    if not rel_title:
+                        continue
+                    rel_group = rel.get("release-group", {})
+                    p_type = rel_group.get("primary-type", "")
+                    s_types = rel_group.get("secondary-types", [])
+                    date = rel.get("date", "")[:4]
+                    status = rel.get("status", "")
+
+                    rel_artists = [a.get("name", "") for a in rel.get("artist-credit", [])]
+                    is_same_artist = any(clean_a.lower() in a.lower() for a in rel_artists)
+                    is_various = any("various" in a.lower() for a in rel_artists)
+
+                    sec_penalty = sum(30 if t == "Compilation" else 20 if t == "Remix" else 15 if t == "Live" else 0 for t in s_types)
+                    score = (50 if is_same_artist else 0) - (40 if is_various else 0) + type_scores.get(p_type, 0) + (10 if status == "Official" else 0) - sec_penalty + (2 if date else 0)
+                    candidates.append((score, rel_title, date or None))
+
+            if candidates:
+                candidates.sort(key=lambda x: x[0], reverse=True)
+                best = candidates[0]
+                if best[0] > 0:
+                    return best[1], best[2]
+    except Exception:
+        pass
+
+    return None, None
+

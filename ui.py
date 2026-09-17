@@ -14,11 +14,11 @@ from PySide6.QtCore import (QAbstractTableModel, QByteArray, QModelIndex, QObjec
 from PySide6.QtGui import (QAction, QColor, QDesktopServices, QFont, QFontMetrics, QIcon,
                            QKeySequence, QPainter, QPainterPath, QPen, QPixmap, QShortcut)
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
-from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog, QFileDialog,
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QDialog, QFileDialog,
                              QFrame, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog,
                              QLabel, QLineEdit, QListWidget, QListWidgetItem,
-                             QMainWindow, QMenu, QMessageBox, QProgressBar,
-                             QPushButton, QScrollArea, QSizePolicy, QSlider, QStackedWidget, QSystemTrayIcon,
+                             QMainWindow, QMenu, QMessageBox, QProgressBar, QPushButton, QRadioButton,
+                             QScrollArea, QSizePolicy, QSlider, QStackedWidget, QSystemTrayIcon,
                              QTableView, QVBoxLayout, QWidget)
 import subprocess
 import sys
@@ -832,6 +832,228 @@ class DeleteTrackDialog(QDialog):
         self.accept()
 
 
+class DuplicateFinderDialog(QDialog):
+    """Interactive resolution dialog for duplicate tracks."""
+    def __init__(self, groups: list[list[dict]], db: MusicDatabase, parent=None):
+        super().__init__(parent)
+        self.groups = groups
+        self.db = db
+        self.deleted_count = 0
+        self.setWindowTitle("Duplikate in der Bibliothek verwalten")
+        self.resize(780, 580)
+        self.setMinimumSize(660, 440)
+
+        # Audio preview support
+        self.preview_output = QAudioOutput(self)
+        self.preview_player = QMediaPlayer(self)
+        self.preview_player.setAudioOutput(self.preview_output)
+        self.current_preview_path: str | None = None
+        self.preview_buttons: dict[int, QPushButton] = {}
+        self.preview_player.mediaStatusChanged.connect(self._on_preview_status)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(14)
+
+        # Header
+        top_layout = QVBoxLayout()
+        top_layout.setSpacing(4)
+        total_dups = sum(len(g) - 1 for g in self.groups)
+        heading = QLabel(f"Gefundene Duplikate ({len(self.groups)} Gruppen, {total_dups} überzählige Songs)")
+        heading.setStyleSheet("font-size: 16px; font-weight: 700; color: #F4F4F4;")
+        top_layout.addWidget(heading)
+
+        sub = QLabel("Wähle für jede Gruppe die Version aus, die du behalten möchtest. Der empfohlene Song (beste Audioqualität) ist vorausgewählt.")
+        sub.setObjectName("secondary")
+        sub.setStyleSheet("font-size: 12px; color: #A0A6AD;")
+        sub.setWordWrap(True)
+        top_layout.addWidget(sub)
+        layout.addLayout(top_layout)
+
+        # Scroll area with groups
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("background: transparent; border: none;")
+
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 8, 0)
+        container_layout.setSpacing(16)
+
+        self.keep_selection: dict[int, int] = {}
+        self.button_groups: list[QButtonGroup] = []
+
+        for g_idx, group in enumerate(self.groups):
+            self.keep_selection[g_idx] = group[0]["id"]
+
+            group_box = QFrame()
+            group_box.setObjectName("card")
+            group_box.setStyleSheet("QFrame#card { background: #181D24; border: 1px solid #262E38; border-radius: 8px; }")
+            g_layout = QVBoxLayout(group_box)
+            g_layout.setContentsMargins(14, 12, 14, 12)
+            g_layout.setSpacing(8)
+
+            clean_name = f"{group[0].get('artist', '')} - {group[0].get('title', '')}".strip(" -")
+            g_header = QLabel(f"Gruppe {g_idx + 1}: {clean_name}")
+            g_header.setStyleSheet("font-weight: 700; color: #3DDC63; font-size: 13px;")
+            g_layout.addWidget(g_header)
+
+            bg = QButtonGroup(self)
+            bg.setExclusive(True)
+            self.button_groups.append(bg)
+
+            max_bitrate = max(t.get("bitrate") or 0 for t in group)
+
+            for t_idx, track in enumerate(group):
+                row = QFrame()
+                row.setStyleSheet("background: #1F252E; border-radius: 6px; padding: 4px;")
+                row_layout = QHBoxLayout(row)
+                row_layout.setContentsMargins(8, 4, 8, 4)
+                row_layout.setSpacing(10)
+
+                rb = QRadioButton("Behalten")
+                rb.setStyleSheet("color: #F4F4F4; font-size: 12px; font-weight: 600;")
+                if t_idx == 0:
+                    rb.setChecked(True)
+                rb.toggled.connect(lambda checked, gid=g_idx, tid=track["id"]: self._on_keep_toggled(gid, tid, checked))
+                bg.addButton(rb)
+                row_layout.addWidget(rb)
+
+                info_layout = QVBoxLayout()
+                info_layout.setSpacing(2)
+                t_title = track.get("title") or "Unbekannt"
+                t_artist = track.get("artist") or "Unbekannter Artist"
+                lbl_title = QLabel(f"{t_title} · {t_artist}")
+                lbl_title.setStyleSheet("font-weight: 600; color: #FFFFFF; font-size: 12px;")
+                info_layout.addWidget(lbl_title)
+
+                dur_s = float(track.get("duration") or 0)
+                dur_str = f"{int(dur_s // 60)}:{int(dur_s % 60):02d}" if dur_s > 0 else "--:--"
+                br_val = track.get("bitrate") or 0
+                br_str = f"{br_val} kbps" if br_val > 0 else "k.A."
+                fp = Path(track.get("file_path", ""))
+                size_str = ""
+                if fp.is_file():
+                    try:
+                        sz = fp.stat().st_size / (1024 * 1024)
+                        size_str = f" · {sz:.1f} MB"
+                    except OSError:
+                        pass
+
+                details_text = f"Dauer: {dur_str} · Bitrate: {br_str}{size_str} · {fp.name}"
+                lbl_sub = QLabel(details_text)
+                lbl_sub.setStyleSheet("font-size: 11px; color: #A0A6AD;")
+                info_layout.addWidget(lbl_sub)
+                row_layout.addLayout(info_layout, 1)
+
+                if br_val > 0 and br_val == max_bitrate and t_idx == 0:
+                    badge = QLabel("Empfohlen")
+                    badge.setStyleSheet("background: #143820; color: #3DDC63; border: 1px solid #3DDC63; border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 700;")
+                    row_layout.addWidget(badge)
+
+                btn_prev = QPushButton("▶")
+                btn_prev.setFixedSize(30, 26)
+                btn_prev.setToolTip("Song vorhören")
+                btn_prev.setStyleSheet("QPushButton { background: #2A323D; border: none; border-radius: 4px; color: #FFF; } QPushButton:hover { background: #384352; }")
+                btn_prev.clicked.connect(lambda _, p=str(fp), tid=track["id"]: self._toggle_preview(p, tid))
+                row_layout.addWidget(btn_prev)
+                self.preview_buttons[track["id"]] = btn_prev
+
+                g_layout.addWidget(row)
+
+            container_layout.addWidget(group_box)
+
+        container_layout.addStretch()
+        scroll.setWidget(container)
+        layout.addWidget(scroll, 1)
+
+        bottom_layout = QHBoxLayout()
+        self.chk_delete_disk = QCheckBox("Ausgewählte Duplikate auch von der Festplatte löschen")
+        self.chk_delete_disk.setStyleSheet("color: #E06C75; font-weight: 500; font-size: 12px;")
+        self.chk_delete_disk.setToolTip("Wenn aktiviert, werden die überzähligen Dateien unwiderruflich von der Festplatte gelöscht.")
+        bottom_layout.addWidget(self.chk_delete_disk)
+        bottom_layout.addStretch()
+
+        btn_cancel = QPushButton("Abbrechen")
+        btn_cancel.clicked.connect(self.reject)
+        bottom_layout.addWidget(btn_cancel)
+
+        btn_apply = QPushButton(f"Duplikate bereinigen ({total_dups})")
+        btn_apply.setObjectName("danger")
+        btn_apply.setIcon(get_icon("trash"))
+        btn_apply.setStyleSheet("background: #C93B3B; color: #FFF; font-weight: 700; padding: 6px 14px; border-radius: 4px;")
+        btn_apply.clicked.connect(self._apply_cleanup)
+        bottom_layout.addWidget(btn_apply)
+
+        layout.addLayout(bottom_layout)
+
+    def _on_keep_toggled(self, g_idx: int, t_id: int, checked: bool):
+        if checked:
+            self.keep_selection[g_idx] = t_id
+
+    def _toggle_preview(self, file_path: str, t_id: int):
+        if self.current_preview_path == file_path and self.preview_player.playbackState() == QMediaPlayer.PlayingState:
+            self.preview_player.stop()
+            self.current_preview_path = None
+            if t_id in self.preview_buttons:
+                self.preview_buttons[t_id].setText("▶")
+        else:
+            self.preview_player.stop()
+            for b in self.preview_buttons.values():
+                b.setText("▶")
+            if Path(file_path).is_file():
+                self.current_preview_path = file_path
+                self.preview_player.setSource(QUrl.fromLocalFile(file_path))
+                self.preview_player.play()
+                if t_id in self.preview_buttons:
+                    self.preview_buttons[t_id].setText("■")
+
+    def _on_preview_status(self, status):
+        if status == QMediaPlayer.EndOfMedia:
+            self.current_preview_path = None
+            for b in self.preview_buttons.values():
+                b.setText("▶")
+
+    def _apply_cleanup(self):
+        to_delete = []
+        for g_idx, group in enumerate(self.groups):
+            keep_id = self.keep_selection.get(g_idx, group[0]["id"])
+            for t in group:
+                if t["id"] != keep_id:
+                    to_delete.append(t)
+
+        if not to_delete:
+            self.accept()
+            return
+
+        delete_disk = self.chk_delete_disk.isChecked()
+        disk_msg = "\n\nACHTUNG: Die Dateien werden auch von der Festplatte gelöscht!" if delete_disk else "\n\n(Die Dateien verbleiben auf der Festplatte und werden nur aus der Bibliothek entfernt.)"
+        reply = QMessageBox.question(
+            self,
+            "Duplikate bereinigen",
+            f"Möchtest du wirklich {len(to_delete)} Duplikat(e) bereinigen?{disk_msg}",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.preview_player.stop()
+            deleted_count = 0
+            for t in to_delete:
+                if self.db.delete_track(t["id"], delete_file=delete_disk):
+                    deleted_count += 1
+            self.deleted_count = deleted_count
+            self.accept()
+
+    def closeEvent(self, event):
+        self.preview_player.stop()
+        super().closeEvent(event)
+
+    def reject(self):
+        self.preview_player.stop()
+        super().reject()
+
+
 class MusicWindow(QMainWindow):
     def __init__(self, database: MusicDatabase, music_root: Path):
         super().__init__()
@@ -896,9 +1118,9 @@ class MusicWindow(QMainWindow):
         self.mini_player = MiniPlayerWindow(self)
         self._setup_shortcuts()
 
-        # Startup cleanup if enabled
+        # Startup cleanup if enabled (fast offline check, <10ms)
         if self.settings.get("cleanup_missing_startup", "0") == "1":
-            self.db.sync_library(self.music_root)
+            self.db.cleanup_missing_files()
 
         self.refresh_library()
         self.refresh_dashboard()
@@ -977,6 +1199,24 @@ class MusicWindow(QMainWindow):
             self.refresh_dashboard()
             self.notify("Tags bereinigt", "Titel und Interpret wurden bereinigt.")
 
+    def open_duplicate_finder(self):
+        duplicates = self.db.find_duplicates(duration_tolerance=2.0, similarity_threshold=0.85)
+        if not duplicates:
+            QMessageBox.information(
+                self,
+                "Keine Duplikate gefunden",
+                "Es wurden keine doppelten Titel in deiner Bibliothek gefunden."
+            )
+            return
+
+        dlg = DuplicateFinderDialog(duplicates, self.db, parent=self)
+        if dlg.exec():
+            deleted = getattr(dlg, "deleted_count", 0)
+            if deleted > 0:
+                self.refresh_library()
+                self.refresh_dashboard()
+                self.notify("Duplikate bereinigt", f"{deleted} Duplikat(e) wurden erfolgreich bereinigt.")
+
     def _on_space_pressed(self):
         focus = QApplication.focusWidget()
         if isinstance(focus, QLineEdit):
@@ -992,7 +1232,14 @@ class MusicWindow(QMainWindow):
 
     def _on_enter_pressed(self):
         focus = QApplication.focusWidget()
+        if hasattr(self, "links") and (focus == self.links or self.links.hasFocus()):
+            self.analyze()
+            return
+        if hasattr(self, "discover_input") and (focus == self.discover_input or self.discover_input.hasFocus()):
+            self.run_youtube_search()
+            return
         if isinstance(focus, QLineEdit):
+            focus.returnPressed.emit()
             return
         if hasattr(self, "lib_table") and self.lib_table.hasFocus():
             idx = self.lib_table.currentIndex()
@@ -1271,21 +1518,25 @@ class MusicWindow(QMainWindow):
         main_layout.addWidget(top_hdr)
 
         self.details_scroll = QScrollArea()
+        self.details_scroll.setObjectName("detailsScroll")
         self.details_scroll.setWidgetResizable(True)
         self.details_scroll.setFrameShape(QFrame.NoFrame)
         self.details_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.details_scroll.setStyleSheet("background: #171A1F; border: none;")
+        self.details_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.details_scroll.setStyleSheet("QScrollArea#detailsScroll { background: transparent; border: none; } QWidget#detailsContent { background: transparent; }")
         
         content = QWidget()
+        content.setObjectName("detailsContent")
+        content.setMaximumWidth(280)
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(12, 8, 12, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(12, 6, 12, 16)
+        layout.setSpacing(6)
 
-        # Large Cover (120x120)
+        # Large Cover (110x110)
         cover_container = QHBoxLayout()
         self.detail_cover = QLabel()
-        self.detail_cover.setFixedSize(120, 120)
-        self.detail_cover.setPixmap(get_cover_pixmap("", 120))
+        self.detail_cover.setFixedSize(110, 110)
+        self.detail_cover.setPixmap(get_cover_pixmap("", 110))
         self.detail_cover.setAlignment(Qt.AlignCenter)
         cover_container.setAlignment(Qt.AlignCenter)
         cover_container.addWidget(self.detail_cover)
@@ -1294,9 +1545,11 @@ class MusicWindow(QMainWindow):
         # Title & Artist
         self.detail_title = QLabel("Kein Song ausgewählt")
         self.detail_title.setWordWrap(True)
+        self.detail_title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.detail_title.setStyleSheet("font-size: 13px; font-weight: 700; color: #F4F4F4;")
         self.detail_artist = QLabel("")
         self.detail_artist.setWordWrap(True)
+        self.detail_artist.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.detail_artist.setStyleSheet("font-size: 12px; font-weight: 600; color: #3DDC63;")
         layout.addWidget(self.detail_title)
         layout.addWidget(self.detail_artist)
@@ -1305,6 +1558,7 @@ class MusicWindow(QMainWindow):
         self.detail_album_badge = QLabel("")
         self.detail_album_badge.setObjectName("metaBadge")
         self.detail_album_badge.setWordWrap(True)
+        self.detail_album_badge.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         layout.addWidget(self.detail_album_badge)
 
         # Tab switcher: Info vs Ähnliche Songs
@@ -1337,6 +1591,7 @@ class MusicWindow(QMainWindow):
         # Metadata box
         meta_frame = QFrame()
         meta_frame.setObjectName("metaBox")
+        meta_frame.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         meta_layout = QVBoxLayout(meta_frame)
         meta_layout.setContentsMargins(10, 8, 10, 8)
         meta_layout.setSpacing(4)
@@ -1375,6 +1630,7 @@ class MusicWindow(QMainWindow):
 
         self.detail_del_btn = self._button("Löschen", self._on_detail_delete, obj_name="danger", icon=get_icon("trash"), icon_size=QSize(14, 14))
         info_layout.addWidget(self.detail_del_btn)
+        info_layout.addStretch(1)
 
         self.detail_stack.addWidget(info_page)
 
@@ -1386,6 +1642,8 @@ class MusicWindow(QMainWindow):
 
         self.similar_status_lbl = QLabel("Keine Empfehlungen geladen")
         self.similar_status_lbl.setObjectName("secondary")
+        self.similar_status_lbl.setWordWrap(True)
+        self.similar_status_lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.similar_status_lbl.setStyleSheet("font-size: 11px; padding: 2px;")
         similar_layout.addWidget(self.similar_status_lbl)
 
@@ -1444,7 +1702,7 @@ class MusicWindow(QMainWindow):
         self.detail_genre.setText(f"Genre: {genre}" if genre else "Genre: --")
         self.detail_plays.setText(f"Gespielt: {plays} mal")
 
-        self.detail_cover.setPixmap(get_cover_pixmap(fp, 120))
+        self.detail_cover.setPixmap(get_cover_pixmap(fp, 110))
         self.detail_fav_btn.setText("Aus Favoriten" if fav else "Favorit")
         self.detail_fav_btn.setIcon(get_icon("heart-filled" if fav else "heart"))
         if force_open:
@@ -2068,7 +2326,14 @@ class MusicWindow(QMainWindow):
         folder_btn = self._button("Ordner", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.music_root))), obj_name="toolbarBtn", icon=get_icon("folder"), icon_size=QSize(16, 16))
         delete_btn = self._button("Löschen", lambda: self.delete_selected_track(favorites), obj_name="toolbarBtn", icon=get_icon("trash"), icon_size=QSize(16, 16))
 
-        for b in [refresh_btn, cover_btn, clean_btn, folder_btn, delete_btn]:
+        buttons = [refresh_btn, cover_btn, clean_btn]
+        if not favorites:
+            dup_btn = self._button("Duplikate", self.open_duplicate_finder, obj_name="toolbarBtn", icon=get_icon("search"), icon_size=QSize(16, 16))
+            dup_btn.setToolTip("Doppelte Songs in der Bibliothek finden und bereinigen")
+            buttons.append(dup_btn)
+        buttons.extend([folder_btn, delete_btn])
+
+        for b in buttons:
             tb_layout.addWidget(b)
 
         # Integrated Library Stats Label
@@ -2115,6 +2380,7 @@ class MusicWindow(QMainWindow):
         search_input.setMinimumWidth(120)
         search_input.setMaximumWidth(260)
         search_input.textChanged.connect(self.on_search_changed)
+        search_input.returnPressed.connect(self.refresh_library)
         tb_layout.addWidget(search_input)
 
         layout.addWidget(toolbar)
@@ -2258,32 +2524,43 @@ class MusicWindow(QMainWindow):
 
         if key == "artist_menu":
             artists = self.db.values_for("artist")
-            if not artists:
-                return
             menu = QMenu(self)
-            for a in artists[:30]:
-                menu.addAction(a, lambda val=a: self._apply_custom_chip("artist_menu", f"Künstler: {val}", val))
+            if not artists:
+                a = menu.addAction("Keine Künstler in der Bibliothek")
+                a.setEnabled(False)
+            else:
+                for a in artists[:30]:
+                    menu.addAction(a, lambda val=a: self._apply_custom_chip("artist_menu", f"Künstler: {val}", val))
             menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
             return
 
         if key == "year_menu":
-            years = [y for y in self.db.values_for("year") if y and y.strip().isdigit()]
-            years = sorted(set(years), reverse=True)
-            if not years:
-                return
+            raw_years = self.db.values_for("year")
+            clean_years = []
+            for y in raw_years:
+                s = str(y).strip()[:4]
+                if s.isdigit() and len(s) == 4:
+                    clean_years.append(s)
+            years = sorted(set(clean_years), reverse=True)
             menu = QMenu(self)
-            for y in years[:25]:
-                menu.addAction(y, lambda val=y: self._apply_custom_chip("year_menu", f"Jahr: {val}", val))
+            if not years:
+                a = menu.addAction("Keine Jahre in der Bibliothek")
+                a.setEnabled(False)
+            else:
+                for y in years[:30]:
+                    menu.addAction(y, lambda val=y: self._apply_custom_chip("year_menu", f"Jahr: {val}", val))
             menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
             return
 
         if key == "genre_menu":
-            genres = self.db.values_for("genre")
-            if not genres:
-                return
+            genres = [g.strip() for g in self.db.values_for("genre") if g and g.strip()]
             menu = QMenu(self)
-            for g in genres[:25]:
-                menu.addAction(g, lambda val=g: self._apply_custom_chip("genre_menu", f"Genre: {val}", val))
+            if not genres:
+                a = menu.addAction("Keine Genres in der Bibliothek")
+                a.setEnabled(False)
+            else:
+                for g in genres[:30]:
+                    menu.addAction(g, lambda val=g: self._apply_custom_chip("genre_menu", f"Genre: {val}", val))
             menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
             return
 

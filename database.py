@@ -98,13 +98,14 @@ class MusicDatabase:
         elif filter_chip == "Playlists":
             where.append("collection != ''")
         elif filter_chip.startswith("Künstler:"):
-            where.append("artist = ?")
+            where.append("artist = ? COLLATE NOCASE")
             values.append(filter_chip.split(":", 1)[1].strip())
         elif filter_chip.startswith("Jahr:"):
-            where.append("year = ?")
-            values.append(filter_chip.split(":", 1)[1].strip())
+            where.append("(year = ? OR year LIKE ?)")
+            val = filter_chip.split(":", 1)[1].strip()
+            values.extend([val, f"{val}%"])
         elif filter_chip.startswith("Genre:"):
-            where.append("genre = ?")
+            where.append("genre = ? COLLATE NOCASE")
             values.append(filter_chip.split(":", 1)[1].strip())
 
         clause = " WHERE " + " AND ".join(where) if where else ""
@@ -115,7 +116,7 @@ class MusicDatabase:
         return self.tracks(" ".join(part for part in (text, artist, album, genre) if part))
 
     def values_for(self, column: str) -> list[str]:
-        if column not in {"artist", "album", "genre"}:
+        if column not in {"artist", "album", "genre", "year"}:
             raise ValueError("Ungültige Filterspalte")
         with self._connection() as conn:
             return [row[0] for row in conn.execute(f"SELECT DISTINCT {column} FROM tracks WHERE {column} != '' ORDER BY {column} COLLATE NOCASE")]
@@ -268,15 +269,43 @@ class MusicDatabase:
                     conn.execute("DELETE FROM tracks WHERE id = ?", (t_id,))
             return True
 
-    def sync_library(self, music_root: Path, progress_callback=None) -> tuple[int, int]:
+    def cleanup_missing_files(self) -> int:
+        """Quickly remove tracks from database if their local file no longer exists on disk (offline, <10ms)."""
+        removed = 0
+        with self._connection() as conn:
+            db_tracks = conn.execute("SELECT id, file_path FROM tracks").fetchall()
+            for t_id, f_path in db_tracks:
+                if not Path(f_path).exists():
+                    conn.execute("DELETE FROM playlist_tracks WHERE track_id = ?", (t_id,))
+                    conn.execute("DELETE FROM favorites WHERE track_id = ?", (t_id,))
+                    conn.execute("DELETE FROM tracks WHERE id = ?", (t_id,))
+                    removed += 1
+        return removed
+
+    def sync_library(self, music_root: Path, progress_callback=None, resolve_albums: bool = True) -> tuple[int, int]:
         from mutagen.mp3 import MP3
-        from mutagen.id3 import ID3
-        from metadata import TrackMetadata
+        from mutagen.id3 import ID3, TALB, TDRC
+        from metadata import TrackMetadata, resolve_album_online
 
         music_root = Path(music_root)
         files = list(music_root.rglob("*.mp3"))
         total = len(files)
         added, removed = 0, 0
+
+        def _enrich_album(fp: Path, art: str, tit: str, alb: str, yr: str) -> tuple[str, str]:
+            if resolve_albums and (not alb or alb in ("Unbekanntes Album", "Einzeltitel", "Single", fp.parent.name)):
+                disc_alb, disc_yr = resolve_album_online(art, tit)
+                if disc_alb:
+                    try:
+                        t = ID3(fp)
+                        t.setall("TALB", [TALB(encoding=3, text=disc_alb)])
+                        if disc_yr and not yr:
+                            t.setall("TDRC", [TDRC(encoding=3, text=disc_yr)])
+                        t.save(fp, v2_version=3)
+                    except Exception:
+                        pass
+                    return disc_alb, yr or disc_yr or ""
+            return alb, yr
 
         with self._connection() as conn:
             db_tracks = conn.execute("SELECT id, file_path FROM tracks").fetchall()
@@ -287,12 +316,19 @@ class MusicDatabase:
                     conn.execute("DELETE FROM tracks WHERE id = ?", (t_id,))
                     removed += 1
 
-            existing_paths = {row[1] for row in conn.execute("SELECT id, file_path FROM tracks")}
+            existing_rows = conn.execute("SELECT id, file_path, album, artist, title FROM tracks").fetchall()
+            existing_map = {row[1]: (row[0], row[2], row[3], row[4]) for row in existing_rows}
 
             for i, file_path in enumerate(files, 1):
                 if progress_callback:
                     progress_callback(i, total, file_path.stem)
-                if str(file_path) in existing_paths:
+
+                if str(file_path) in existing_map:
+                    t_id, t_alb, t_art, t_tit = existing_map[str(file_path)]
+                    new_alb, new_yr = _enrich_album(file_path, t_art, t_tit, t_alb, "")
+                    if new_alb != t_alb:
+                        conn.execute("UPDATE tracks SET album = ?, year = COALESCE(NULLIF(year, ''), ?) WHERE id = ?",
+                                     (new_alb, new_yr, t_id))
                     continue
 
                 try:
@@ -306,6 +342,8 @@ class MusicDatabase:
                     collection = file_path.parent.name
                     duration = audio.info.length if audio.info else 0
                     bitrate = int(getattr(audio.info, "bitrate", 0) / 1000) if audio.info else 320
+
+                    album, year = _enrich_album(file_path, artist, title, album, year)
 
                     track = TrackMetadata(
                         title=title, artist=artist, album=album, year=year,
@@ -355,3 +393,101 @@ class MusicDatabase:
     def retry_download(self, download_id: int) -> None:
         with self._connection() as conn:
             conn.execute("UPDATE downloads SET status = 'Bereit', progress = 0, speed = '', eta = '' WHERE id = ?", (download_id,))
+
+    def find_duplicates(self, duration_tolerance: float = 2.0, similarity_threshold: float = 0.85) -> list[list[dict]]:
+        """Find potential duplicate tracks based on fuzzy title matching and duration tolerance."""
+        from difflib import SequenceMatcher
+        from metadata import clean_artist_title
+
+        with self._connection() as conn:
+            rows = conn.execute("SELECT id, title, artist, album, duration, bitrate, file_path, play_count, added_at FROM tracks").fetchall()
+
+        if len(rows) < 2:
+            return []
+
+        # Precompute cleaned titles & artists for fast comparison
+        items = []
+        for r in rows:
+            d = dict(r)
+            c_title, c_artist = clean_artist_title(d.get("title", ""), d.get("artist", ""))
+            d["_clean_title"] = c_title.lower()
+            d["_clean_artist"] = c_artist.lower()
+            items.append(d)
+
+        parent = list(range(len(items)))
+
+        def find(i: int) -> int:
+            path = []
+            while parent[i] != i:
+                path.append(i)
+                i = parent[i]
+            for node in path:
+                parent[node] = i
+            return i
+
+        def union(i: int, j: int) -> None:
+            root_i = find(i)
+            root_j = find(j)
+            if root_i != root_j:
+                parent[root_j] = root_i
+
+        n = len(items)
+        for i in range(n):
+            item_a = items[i]
+            dur_a = float(item_a.get("duration") or 0)
+            title_a = item_a["_clean_title"]
+            artist_a = item_a["_clean_artist"]
+
+            for j in range(i + 1, n):
+                item_b = items[j]
+                dur_b = float(item_b.get("duration") or 0)
+
+                # Duration check: if both have duration > 0, check tolerance
+                if dur_a > 0 and dur_b > 0:
+                    if abs(dur_a - dur_b) > duration_tolerance:
+                        continue
+
+                title_b = item_b["_clean_title"]
+                artist_b = item_b["_clean_artist"]
+
+                # Title similarity
+                if title_a == title_b:
+                    title_sim = 1.0
+                else:
+                    title_sim = SequenceMatcher(None, title_a, title_b).ratio()
+
+                if title_sim < similarity_threshold:
+                    continue
+
+                # Artist similarity
+                if (not artist_a or not artist_b
+                    or artist_a in ("unbekannter artist", "unbekannt")
+                    or artist_b in ("unbekannter artist", "unbekannt")):
+                    if title_sim >= max(0.90, similarity_threshold):
+                        union(i, j)
+                else:
+                    if artist_a == artist_b:
+                        artist_sim = 1.0
+                    else:
+                        artist_sim = SequenceMatcher(None, artist_a, artist_b).ratio()
+
+                    if artist_sim >= 0.75:
+                        union(i, j)
+
+        groups_map: dict[int, list[dict]] = {}
+        for i in range(n):
+            root = find(i)
+            groups_map.setdefault(root, []).append(items[i])
+
+        result = []
+        for grp in groups_map.values():
+            if len(grp) >= 2:
+                # Sort descending: best quality / most played first
+                grp.sort(key=lambda t: (t.get("bitrate") or 0, t.get("play_count") or 0, -t["id"]), reverse=True)
+                for t in grp:
+                    t.pop("_clean_title", None)
+                    t.pop("_clean_artist", None)
+                result.append(grp)
+
+        return result
+

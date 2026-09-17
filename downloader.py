@@ -252,12 +252,10 @@ class MusicDownloader:
                 track.cover_url = info.get("thumbnail") or (thumbs[-1].get("url") if thumbs else (f"https://img.youtube.com/vi/{v_id}/hqdefault.jpg" if v_id else ""))
             if track.artist == "Unbekannter Artist":
                 track.artist = info.get("artist") or info.get("uploader") or track.artist
-            if track.artist.endswith(" - Topic"):
-                track.artist = track.artist[:-8].strip()
-            if (not track.artist or track.artist == "Unbekannter Artist") and " - " in track.title:
-                parts = track.title.split(" - ", 1)
-                track.artist = parts[0].strip()
-                track.title = parts[1].strip()
+
+            if self.database.get_setting("auto_metadata", "1") == "1":
+                from metadata import clean_artist_title
+                track.title, track.artist = clean_artist_title(track.title, track.artist)
             if track.album == "Unbekanntes Album":
                 track.album = info.get("album") or track.album
             if not track.year:
