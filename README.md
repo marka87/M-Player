@@ -148,3 +148,9 @@ Das Repository verfügt über eine automatisierte GitHub Actions Pipeline (`.git
 
 * **Musikdateien:** Werden nach dem Schema `Music/<Playlist oder Einzeltitel>/<Künstler> - <Titel>.mp3` abgelegt.
 * **Datenbank:** `music_library.db` (SQLite) speichert Metadaten, Playlists, Play-Counts und Favoriten lokal im Anwendungsverzeichnis.
+
+---
+
+## ⚖️ Rechtlicher Hinweis
+
+**Achtung:** Der Download von urheberrechtlich geschützter Musik aus dem Internet (z. B. von YouTube oder Spotify) ist nur dann gestattet, wenn es in deinem Land gesetzlich erlaubt ist (z. B. im Rahmen des Rechts auf eine Privatkopie) oder du die ausdrückliche Erlaubnis des Rechteinhabers hast. Der Entwickler von M-Player übernimmt keine Haftung für illegale Downloads oder Urheberrechtsverletzungen, die durch die Nutzung dieser Software entstehen. Nutze das Tool verantwortungsvoll und lade nur Lieder herunter, für die du die rechtliche Erlaubnis hast.
