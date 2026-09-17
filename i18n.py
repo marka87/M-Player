@@ -61,6 +61,11 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "en": "Songs",
         "hu": "Dalok",
     },
+    "nav_tools": {
+        "de": "Tools",
+        "en": "Tools",
+        "hu": "Eszközök",
+    },
 
     # Header / Top Bar
     "search_placeholder": {

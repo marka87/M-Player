@@ -1294,10 +1294,10 @@ class MusicWindow(QMainWindow):
         focus = QApplication.focusWidget()
         if isinstance(focus, QLineEdit):
             return
-        cur_page = self.pages.currentIndex() if hasattr(self, "pages") else 2
-        if cur_page == 2:
+        cur_page = self.pages.currentIndex() if hasattr(self, "pages") else 0
+        if cur_page == 0:
             self.delete_selected_track(favorites=False)
-        elif cur_page == 3:
+        elif cur_page == 5:
             self.delete_selected_track(favorites=True)
 
     def _button(self, text, slot, accent=False, obj_name="", icon: QIcon | None = None, icon_size: QSize | None = None):
@@ -1485,12 +1485,10 @@ class MusicWindow(QMainWindow):
         self.nav.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         nav_items = [
-            (tr("nav_downloader"), "downloader", 0),
-            (tr("nav_discover"), "compass", 1),
-            (tr("nav_library"), "library", 2),
-            (tr("nav_favorites"), "heart", 3),
-            (tr("nav_playlists"), "playlist", 4),
-            (tr("nav_downloads"), "download", 5),
+            (tr("nav_library"), "library", 0),
+            (tr("nav_playlists"), "playlist", 1),
+            (tr("nav_downloads"), "download", 2),
+            (tr("nav_tools"), "zap", 3),
         ]
         for title, icon_name, _ in nav_items:
             item = QListWidgetItem(get_icon(icon_name), f"  {title}")
@@ -1530,13 +1528,12 @@ class MusicWindow(QMainWindow):
 
         # Stacked Pages
         self.pages = QStackedWidget()
-        self.pages.addWidget(self._downloader_page())   # 0: Link-Import
-        self.pages.addWidget(self._discover_page())     # 1: YouTube-Suche / Entdecken
-        self.pages.addWidget(self._library_page(False))  # 2: Bibliothek
-        self.pages.addWidget(self._library_page(True))   # 3: Favoriten
-        self.pages.addWidget(self._playlists_page())     # 4: Playlists
-        self.pages.addWidget(self._queue_page())         # 5: Downloads
-        self.pages.addWidget(self._settings_page())      # 6: Einstellungen
+        self.pages.addWidget(self._library_page(False))       # 0: Bibliothek
+        self.pages.addWidget(self._playlists_page())          # 1: Playlists
+        self.pages.addWidget(self._downloads_combined_page()) # 2: Downloads (Suche, Link, Queue)
+        self.pages.addWidget(self._tools_page())              # 3: Metadata & Tools
+        self.pages.addWidget(self._settings_page())           # 4: Einstellungen
+        self.pages.addWidget(self._library_page(True))        # 5: Favoriten (hidden, but accessible)
         content_box.addWidget(self.pages, 1)
 
         body.addLayout(content_box, 1)
@@ -1550,7 +1547,7 @@ class MusicWindow(QMainWindow):
 
         # Bottom Mini Player
         main_layout.addWidget(self._player_bar())
-        self.nav.setCurrentRow(2)
+        self.nav.setCurrentRow(0)
 
     def refresh_dashboard(self):
         stats = self.db.dashboard_stats(self.music_root)
@@ -2020,6 +2017,98 @@ class MusicWindow(QMainWindow):
         if self.selected_detail_track:
             self._prompt_delete_track(self.selected_detail_track)
 
+    def _downloads_combined_page(self) -> QWidget:
+        page = QFrame()
+        page.setObjectName("card")
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # Top Navigation Bar for sub-pages
+        nav_bar = QFrame()
+        nav_bar.setObjectName("toolbarFrame")
+        nav_layout = QHBoxLayout(nav_bar)
+        nav_layout.setContentsMargins(18, 12, 18, 12)
+        nav_layout.setSpacing(12)
+
+        self.dl_tab_discover = QPushButton("Suchen / Entdecken")
+        self.dl_tab_discover.setIcon(get_icon("compass"))
+        self.dl_tab_downloader = QPushButton("Link-Download")
+        self.dl_tab_downloader.setIcon(get_icon("link"))
+        self.dl_tab_queue = QPushButton("Downloads & Warteschlange")
+        self.dl_tab_queue.setIcon(get_icon("download"))
+
+        self.dl_tabs = [self.dl_tab_discover, self.dl_tab_downloader, self.dl_tab_queue]
+        for idx, btn in enumerate(self.dl_tabs):
+            btn.setObjectName("chipBtn")
+            btn.setProperty("active", "true" if idx == 0 else "false")
+            btn.clicked.connect(lambda _, i=idx: self._switch_downloads_tab(i))
+            nav_layout.addWidget(btn)
+
+        nav_layout.addStretch()
+        layout.addWidget(nav_bar)
+
+        # Stacked Widget for the sub-pages
+        self.dl_stack = QStackedWidget()
+        self.dl_stack.addWidget(self._discover_page())
+        self.dl_stack.addWidget(self._downloader_page())
+        self.dl_stack.addWidget(self._queue_page())
+        layout.addWidget(self.dl_stack, 1)
+
+        return page
+
+    def _switch_downloads_tab(self, index: int):
+        self.dl_stack.setCurrentIndex(index)
+        for i, btn in enumerate(self.dl_tabs):
+            btn.setProperty("active", "true" if i == index else "false")
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+
+    def _tools_page(self) -> QWidget:
+        page = QFrame()
+        page.setObjectName("card")
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(14)
+
+        header_box = QVBoxLayout()
+        header_box.setSpacing(3)
+        header_title = QLabel("Bibliothek & Metadaten Tools")
+        header_title.setStyleSheet("font-size: 18px; font-weight: 700; color: #F4F4F4;")
+        header_sub = QLabel("Werkzeuge zur Pflege und Bereinigung deiner Musikbibliothek.")
+        header_sub.setObjectName("secondary")
+        header_box.addWidget(header_title)
+        header_box.addWidget(header_sub)
+        layout.addLayout(header_box)
+
+        tools_grid = QGridLayout()
+        tools_grid.setSpacing(16)
+        
+        # Tool: Cover-Suche
+        btn_cover = self._button("Albumcover suchen", self.run_cover_search, icon=get_icon("covers"), icon_size=QSize(24, 24))
+        btn_cover.setMinimumHeight(60)
+        tools_grid.addWidget(btn_cover, 0, 0)
+        
+        # Tool: Sync Library
+        btn_sync = self._button("Bibliothek synchronisieren", self.run_sync_library, icon=get_icon("sync"), icon_size=QSize(24, 24))
+        btn_sync.setMinimumHeight(60)
+        tools_grid.addWidget(btn_sync, 0, 1)
+        
+        # Tool: Duplikate finden
+        btn_dupes = self._button("Duplikate finden", self.open_duplicate_finder, icon=get_icon("search"), icon_size=QSize(24, 24))
+        btn_dupes.setMinimumHeight(60)
+        tools_grid.addWidget(btn_dupes, 1, 0)
+
+        # Tool: Auto-Clean
+        btn_clean = self._button("Tags bereinigen (Auto-Clean)", lambda: self.clean_selected_tags(False), icon=get_icon("zap"), icon_size=QSize(24, 24))
+        btn_clean.setMinimumHeight(60)
+        tools_grid.addWidget(btn_clean, 1, 1)
+
+        layout.addLayout(tools_grid)
+        layout.addStretch()
+
+        return page
+
     def _downloader_page(self) -> QWidget:
         page = QFrame()
         page.setObjectName("card")
@@ -2046,7 +2135,7 @@ class MusicWindow(QMainWindow):
         self.links.returnPressed.connect(self.analyze)
         self.analyze_btn = self._button(tr("btn_analyze"), self.analyze, True, icon=get_icon("search"))
         self.analyze_btn.setFixedWidth(140)
-        self.to_discover_btn = self._button(tr("btn_to_discover"), lambda: self.nav.setCurrentRow(1), icon=get_icon("compass"))
+        self.to_discover_btn = self._button(tr("btn_to_discover"), lambda: self._switch_downloads_tab(0) if hasattr(self, "_switch_downloads_tab") else None, icon=get_icon("compass"))
         input_row.addWidget(self.links, 1)
         input_row.addWidget(self.analyze_btn)
         input_row.addWidget(self.to_discover_btn)
@@ -2332,7 +2421,9 @@ class MusicWindow(QMainWindow):
     def _handle_search_hit(self, res: dict):
         if res.get("is_playlist"):
             self.links.setText(res["url"])
-            self.nav.setCurrentRow(0)
+            self.nav.setCurrentRow(2)
+            if hasattr(self, "_switch_downloads_tab"):
+                self._switch_downloads_tab(1)
             self.analyze()
         else:
             track = TrackMetadata(
@@ -2362,7 +2453,9 @@ class MusicWindow(QMainWindow):
             task.signals.status.connect(self._on_download_status)
             self.start_task(task)
             self.update_queue_stats()
-            self.nav.setCurrentRow(5)
+            self.nav.setCurrentRow(2)
+            if hasattr(self, "_switch_downloads_tab"):
+                self._switch_downloads_tab(2)
 
     def _search_context_menu(self, point):
         idx = self.discover_table.indexAt(point)
@@ -2377,7 +2470,7 @@ class MusicWindow(QMainWindow):
             menu.addAction(get_icon("play"), "Vorhören (Direct Stream)", lambda: self.preview_stream(res))
             menu.addAction(get_icon("download"), "In Bibliothek laden", lambda: self._handle_search_hit(res))
             menu.addAction(get_icon("zap"), "Ähnliche Songs anzeigen", lambda: (self.details_panel.show(), self._switch_detail_tab(2), self._load_recommendations_for_track(res)))
-            menu.addAction(get_icon("downloader"), "In Downloader einfügen", lambda: (self.links.setText(res["url"]), self.nav.setCurrentRow(0)))
+            menu.addAction(get_icon("downloader"), "In Downloader einfügen", lambda: (self.links.setText(res["url"]), self.nav.setCurrentRow(2), self._switch_downloads_tab(1) if hasattr(self, "_switch_downloads_tab") else None))
 
         menu.addAction(get_icon("link"), "YouTube-Link kopieren", lambda: QApplication.clipboard().setText(res["url"]))
         menu.addAction(get_icon("compass"), "Im Browser öffnen", lambda: QDesktopServices.openUrl(QUrl(res["url"])))
@@ -2569,7 +2662,7 @@ class MusicWindow(QMainWindow):
             empty_btn_row = QHBoxLayout()
             empty_btn_row.setAlignment(Qt.AlignCenter)
             empty_btn_row.setSpacing(12)
-            btn_dl = self._button("Zum Downloader", lambda: self.show_page(0), True, icon=get_icon("downloader"), icon_size=QSize(16, 16))
+            btn_dl = self._button("Zum Downloader", lambda: (self.nav.setCurrentRow(2), self._switch_downloads_tab(1) if hasattr(self, "_switch_downloads_tab") else None), True, icon=get_icon("downloader"), icon_size=QSize(16, 16))
             btn_folder = self._button("Musikordner öffnen", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.music_root))), icon=get_icon("folder"), icon_size=QSize(16, 16))
             empty_btn_row.addWidget(btn_dl)
             empty_btn_row.addWidget(btn_folder)
@@ -3108,20 +3201,20 @@ class MusicWindow(QMainWindow):
 
     def _open_settings(self):
         curr = self.pages.currentIndex()
-        if curr != 6:
+        if curr != 4:
             self._prev_page = curr
-        self.show_page(6)
+        self.show_page(4)
 
     def _close_settings(self):
-        dest = getattr(self, "_prev_page", 2)
-        if dest == 6 or dest is None:
-            dest = 2
+        dest = getattr(self, "_prev_page", 0)
+        if dest == 4 or dest is None:
+            dest = 0
         self.show_page(dest)
         if hasattr(self, "nav") and 0 <= dest < self.nav.count():
             self.nav.setCurrentRow(dest)
 
     def _on_escape(self):
-        if hasattr(self, "pages") and self.pages.currentIndex() == 6:
+        if hasattr(self, "pages") and self.pages.currentIndex() == 4:
             self._close_settings()
             return
         if hasattr(self, "details_panel") and self.details_panel.isVisible():
@@ -3267,9 +3360,9 @@ class MusicWindow(QMainWindow):
 
     def show_page(self, index: int):
         self.pages.setCurrentIndex(index)
-        if index in (2, 3):
+        if index in (0, 5):
             self.refresh_library()
-        elif index == 4:
+        elif index == 1:
             self.refresh_playlists()
 
     def on_search_changed(self, text: str):
@@ -3323,7 +3416,10 @@ class MusicWindow(QMainWindow):
         self._batch_total = len(items)
         self._batch_remaining = len(items)
         self._batch_single_title = items[0][1].title if len(items) == 1 else None
-        self.nav.setCurrentRow(5)
+        
+        self.nav.setCurrentRow(2)
+        if hasattr(self, "_switch_downloads_tab"):
+            self._switch_downloads_tab(2)
 
         for step, (row_idx, track) in enumerate(items, 1):
             q_idx = self.queue_model.add_task(
@@ -3716,7 +3812,7 @@ class MusicWindow(QMainWindow):
 
     def _jump_to_current_playlist(self):
         if self.current_playlist_name:
-            self.nav.setCurrentRow(4)
+            self.nav.setCurrentRow(1)
             self._open_playlist_detail(self.current_playlist_name)
 
     def _toggle_mute(self):
@@ -3871,7 +3967,9 @@ class MusicWindow(QMainWindow):
     def _re_download(self, track):
         if track["source_url"]:
             self.links.setText(track["source_url"])
-            self.nav.setCurrentRow(0)
+            self.nav.setCurrentRow(2)
+            if hasattr(self, "_switch_downloads_tab"):
+                self._switch_downloads_tab(1)
             self.analyze()
         else:
             QMessageBox.information(self, "Keine Quell-URL", "Für diesen Song ist keine Quell-URL hinterlegt.")
