@@ -49,9 +49,9 @@ def test_full_ui():
         assert win.logo_lbl.width() == 28 and win.logo_lbl.height() == 28
         assert not win.windowIcon().isNull()
 
-        # Check pages (Downloader, Entdecken, Bibliothek, Favoriten, Playlists, Downloads, Einstellungen)
-        assert win.pages.count() == 7
-        for p_idx in range(7):
+        # Check pages (Bibliothek, Playlists, Downloads, Tools, Einstellungen, Favoriten)
+        assert win.pages.count() == 6
+        for p_idx in range(6):
             win.show_page(p_idx)
 
         # Check Discover (YouTube-Suche) components
@@ -105,7 +105,7 @@ def test_full_ui():
         assert hasattr(win, "chk_auto_sync_pl")
         # Check Settings small window height protection
         win.resize(700, 420)
-        win.show_page(6)
+        win.show_page(4)
         app.processEvents()
         for chk in (win.chk_auto_cover, win.chk_auto_meta, win.chk_only_new, win.chk_cleanup_startup, win.chk_auto_sync_pl):
             assert chk.minimumHeight() >= 24
