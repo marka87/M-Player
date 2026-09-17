@@ -263,8 +263,18 @@ class MusicDownloader:
             if self.database.get_setting("auto_metadata", "1") == "1":
                 from metadata import clean_artist_title
                 track.title, track.artist = clean_artist_title(track.title, track.artist)
-            if track.album == "Unbekanntes Album":
+            if track.album in ("Unbekanntes Album", "", None):
                 track.album = info.get("album") or track.album
+            if track.album in ("Unbekanntes Album", "", None) and self.database.get_setting("auto_metadata", "1") == "1":
+                try:
+                    from metadata import resolve_album_online
+                    resolved_album, resolved_year = resolve_album_online(track.artist, track.title)
+                    if resolved_album:
+                        track.album = resolved_album
+                    if resolved_year and not track.year:
+                        track.year = resolved_year
+                except Exception:
+                    pass
             if not track.year:
                 track.year = str(info.get("release_year") or info.get("upload_date", "")[:4])
 
@@ -287,8 +297,17 @@ class MusicDownloader:
                 from metadata import download_cover
                 cover_data = download_cover(track.cover_url)
 
-            cover = write_id3(files[0], track, cover_override=cover_data)
             destination = target_path(self.library_root, track)
+
+            # Duplicate Check: skip saving duplicate file if song already exists in library
+            if self.database.get_setting("only_new", "1") == "1":
+                dup = self.database.find_duplicate_track(track.title, track.artist, track.source_url, destination)
+                if dup:
+                    if track.collection and track.collection not in ("Einzeltitel", "Single"):
+                        self.database.add_to_playlist(track.collection, dup["id"])
+                    return
+
+            cover = write_id3(files[0], track, cover_override=cover_data)
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination = self._unused_path(destination)
             shutil.move(str(files[0]), destination)

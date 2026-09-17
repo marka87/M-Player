@@ -58,6 +58,11 @@ def test_find_duplicates():
         all_tracks = db.tracks()
         assert len(all_tracks) == 3, f"Expected 3 remaining tracks, got {len(all_tracks)}"
 
+        # Check find_duplicate_track
+        assert db.find_duplicate_track(title="Smooth Criminal", artist="Michael Jackson") is not None
+        assert db.find_duplicate_track(title="Nonexistent", artist="Nobody") is None
+        assert db.find_duplicate_track(file_path=p3) is not None
+
         print("test_find_duplicates passed successfully!")
 
 

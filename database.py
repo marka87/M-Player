@@ -394,6 +394,23 @@ class MusicDatabase:
         with self._connection() as conn:
             conn.execute("UPDATE downloads SET status = 'Bereit', progress = 0, speed = '', eta = '' WHERE id = ?", (download_id,))
 
+    def find_duplicate_track(self, title: str = "", artist: str = "", source_url: str = "", file_path: str | Path = "") -> sqlite3.Row | None:
+        with self._connection() as conn:
+            if source_url:
+                row = conn.execute("SELECT * FROM tracks WHERE source_url = ?", (source_url,)).fetchone()
+                if row:
+                    return row
+            if file_path:
+                row = conn.execute("SELECT * FROM tracks WHERE file_path = ?", (str(file_path),)).fetchone()
+                if row:
+                    return row
+            if title and artist:
+                return conn.execute(
+                    "SELECT * FROM tracks WHERE LOWER(TRIM(title)) = LOWER(TRIM(?)) AND LOWER(TRIM(artist)) = LOWER(TRIM(?))",
+                    (title, artist)
+                ).fetchone()
+        return None
+
     def find_duplicates(self, duration_tolerance: float = 2.0, similarity_threshold: float = 0.85) -> list[list[dict]]:
         """Find potential duplicate tracks based on fuzzy title matching and duration tolerance."""
         from difflib import SequenceMatcher
