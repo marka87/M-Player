@@ -20,10 +20,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -47,7 +47,7 @@ jobs:
           python build_portable.py
 
       - name: Upload Windows Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-portable
           path: dist/M-Player-Portable-*.zip
@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install System Libraries
         run: |
@@ -79,11 +79,26 @@ jobs:
             libxcb-render-util0 \
             libxcb-image0 \
             libxcb-xinerama0 \
+            libfuse2 \
             curl \
-            file
+            wget \
+            file \
+            binutils
+
+      - name: Install appimagetool
+        run: |
+          sudo wget -q -O /opt/appimagetool.AppImage https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage
+          sudo chmod +x /opt/appimagetool.AppImage
+          cd /opt
+          sudo /opt/appimagetool.AppImage --appimage-extract
+          sudo mv squashfs-root /opt/appimagetool
+          sudo ln -sf /opt/appimagetool/AppRun /usr/local/bin/appimagetool
+          sudo chmod +x /usr/local/bin/appimagetool
+          rm -f /opt/appimagetool.AppImage
+          appimagetool --version || echo "appimagetool installed successfully"
 
       - name: Setup Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -93,6 +108,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$(python -m site --user-base)/bin" >> $GITHUB_PATH
 
       - name: Generate Logo and Icons
         run: |
@@ -100,18 +117,19 @@ jobs:
 
       - name: Build Linux Tarball & AppImage
         run: |
+          sed -i 's/\r$//' build_linux.sh
           chmod +x build_linux.sh
-          ./build_linux.sh
+          bash ./build_linux.sh
 
       - name: Upload Linux Portable Tarball
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-portable
           path: dist/M-Player-Linux-*.tar.gz
           retention-days: 7
 
       - name: Upload Linux AppImage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-appimage
           path: dist/*.AppImage
@@ -133,25 +151,25 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Download Windows Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: windows-portable
           path: release-assets/
 
       - name: Download Linux Portable Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: linux-portable
           path: release-assets/
 
       - name: Download Linux AppImage Artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: linux-appimage
           path: release-assets/
 
       - name: Create or Update GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.vars.outputs.tag }}
           name: M-Player ${{ steps.vars.outputs.tag }}

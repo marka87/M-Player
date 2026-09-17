@@ -20,10 +20,14 @@ echo "===================================================="
 echo "   M-Player Linux Build-System ($VERSION)"
 echo "===================================================="
 
-# 1. Check Python environment
-PYTHON="python3"
-if [ -x ".venv/bin/python" ]; then
-    PYTHON=".venv/bin/python"
+# 1. Detect Python executable
+PYTHON="python"
+if ! command -v python >/dev/null 2>&1; then
+    if command -v python3 >/dev/null 2>&1; then
+        PYTHON="python3"
+    elif [ -x ".venv/bin/python" ]; then
+        PYTHON=".venv/bin/python"
+    fi
 fi
 
 echo "[1/4] Starte PyInstaller und Portable Tarball Build via $PYTHON ..."
@@ -82,30 +86,22 @@ chmod +x "$APPDIR/AppRun"
 echo "[3/4] Baue AppImage ..."
 APPIMAGE_TOOL=""
 if command -v appimagetool >/dev/null 2>&1; then
-    APPIMAGE_TOOL="appimagetool"
-elif [ -f "$SCRIPT_DIR/appimagetool" ]; then
+    APPIMAGE_TOOL="$(command -v appimagetool)"
+elif [ -x "$SCRIPT_DIR/appimagetool" ]; then
     APPIMAGE_TOOL="$SCRIPT_DIR/appimagetool"
 fi
 
 APPIMAGE_OUT="$DIST_DIR/M-Player-${VERSION}-x86_64.AppImage"
 
-if [ -z "$APPIMAGE_TOOL" ]; then
-    echo "  ! appimagetool nicht im Pfad gefunden. Lade Standalone-Version herunter..."
-    ARCH="$(uname -m)"
-    if [ "$ARCH" = "x86_64" ]; then
-        curl -sL "https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage" -o "$SCRIPT_DIR/appimagetool"
-        chmod +x "$SCRIPT_DIR/appimagetool"
-        APPIMAGE_TOOL="$SCRIPT_DIR/appimagetool"
-    fi
-fi
-
-if [ -n "$APPIMAGE_TOOL" ] && [ -x "$APPIMAGE_TOOL" ]; then
+if [ -n "$APPIMAGE_TOOL" ]; then
     export ARCH=x86_64
-    "$APPIMAGE_TOOL" --appimage-extract-and-run "$APPDIR" "$APPIMAGE_OUT" || "$APPIMAGE_TOOL" "$APPDIR" "$APPIMAGE_OUT"
-    chmod +x "$APPIMAGE_OUT"
-    echo "  [OK] AppImage erfolgreich erzeugt: $APPIMAGE_OUT"
+    "$APPIMAGE_TOOL" "$APPDIR" "$APPIMAGE_OUT" || "$APPIMAGE_TOOL" --appimage-extract-and-run "$APPDIR" "$APPIMAGE_OUT"
+    if [ -f "$APPIMAGE_OUT" ]; then
+        chmod +x "$APPIMAGE_OUT"
+        echo "  [OK] AppImage erfolgreich erzeugt: $APPIMAGE_OUT"
+    fi
 else
-    echo "  ! Hinweis: AppImage konnte nicht gebaut werden (appimagetool fehlt). Das Portable-Archiv (.tar.gz) ist jedoch einsatzbereit!"
+    echo "  ! Hinweis: appimagetool nicht gefunden. Das Portable-Archiv (.tar.gz) ist jedoch einsatzbereit!"
 fi
 
 echo "[4/4] Linux-Build erfolgreich abgeschlossen!"
