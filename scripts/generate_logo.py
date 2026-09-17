@@ -80,6 +80,12 @@ def main():
     create_multi_ico(png_images, ico_path)
     print(f"Wrote {ico_path} with sizes: {sizes}")
 
+    # Write 256x256 PNG for Linux desktops and AppImage
+    png_256 = next(b for s, _, b in png_images if s == 256)
+    png_path = assets / "icon.png"
+    png_path.write_bytes(png_256)
+    print(f"Wrote {png_path} (256x256 PNG)")
+
 
 if __name__ == "__main__":
     main()

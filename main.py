@@ -62,8 +62,11 @@ if __name__ == "__main__":
     splash.show()
     app.processEvents()
 
+    png_path = base / "assets" / "icon.png"
     ico_path = base / "assets" / "icon.ico"
-    if ico_path.exists():
+    if png_path.exists():
+        app.setWindowIcon(QIcon(str(png_path)))
+    elif ico_path.exists():
         app.setWindowIcon(QIcon(str(ico_path)))
     
     db = MusicDatabase(base / "music_library.db")

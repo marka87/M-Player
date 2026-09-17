@@ -25,27 +25,28 @@ Progress = Callable[[float, str, str, str], None]
 
 
 def _ensure_external_tools() -> None:
-    """Ensure ffmpeg, ffprobe, and deno are in PATH (checking local bin/ first, then WinGet)."""
+    """Ensure ffmpeg, ffprobe, and deno are in PATH (checking local bin/ first, then WinGet on Windows)."""
     import sys
     app_dir = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
     local_bin = app_dir / "bin"
     if local_bin.is_dir() and str(local_bin) not in os.environ.get("PATH", ""):
-        os.environ["PATH"] = f"{local_bin};{os.environ.get('PATH', '')}"
+        os.environ["PATH"] = f"{local_bin}{os.pathsep}{os.environ.get('PATH', '')}"
 
-    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
-        for cand in Path.home().glob("AppData/Local/Microsoft/WinGet/Packages/*FFmpeg*/**/ffmpeg.exe"):
-            if cand.is_file():
-                bin_dir = str(cand.parent)
-                if bin_dir not in os.environ.get("PATH", ""):
-                    os.environ["PATH"] = f"{bin_dir};{os.environ.get('PATH', '')}"
-                break
-    if not shutil.which("deno"):
-        for cand in Path.home().glob("AppData/Local/Microsoft/WinGet/Packages/*Deno*/**/deno.exe"):
-            if cand.is_file():
-                bin_dir = str(cand.parent)
-                if bin_dir not in os.environ.get("PATH", ""):
-                    os.environ["PATH"] = f"{bin_dir};{os.environ.get('PATH', '')}"
-                break
+    if sys.platform == "win32":
+        if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+            for cand in Path.home().glob("AppData/Local/Microsoft/WinGet/Packages/*FFmpeg*/**/ffmpeg.exe"):
+                if cand.is_file():
+                    bin_dir = str(cand.parent)
+                    if bin_dir not in os.environ.get("PATH", ""):
+                        os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
+                    break
+        if not shutil.which("deno"):
+            for cand in Path.home().glob("AppData/Local/Microsoft/WinGet/Packages/*Deno*/**/deno.exe"):
+                if cand.is_file():
+                    bin_dir = str(cand.parent)
+                    if bin_dir not in os.environ.get("PATH", ""):
+                        os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
+                    break
 
 
 _ensure_external_tools()
