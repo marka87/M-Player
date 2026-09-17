@@ -7,3 +7,4 @@ if "%1"=="" (
 ) else (
     python scripts\bump_version.py %1
 )
+
