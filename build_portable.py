@@ -20,7 +20,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DIST_DIR = BASE_DIR / "dist"
 BUILD_DIR = BASE_DIR / "build"
 PORTABLE_DIR = DIST_DIR / "M-Player-Portable"
-VERSION = "v1.0.0"
+VERSION = "v1.0.1"
 
 
 def find_tool(tool_name: str) -> Path | None:

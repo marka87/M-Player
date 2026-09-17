@@ -31,6 +31,7 @@ Ein moderner, lokaler Windows-11-Musik-Manager mit eleganter PySide6-Oberfläche
 ### 🎛️ 4. Player & Mini-Player
 * **Vollwertige Wiedergabe:** Play/Pause, Skip, Shuffle (Zufall), Repeat (Wiederholen), Lautstärkeregler und stufenloser Timeline-Direct-Seek.
 * **Mini-Player (`Ctrl+M`):** Kompaktes Schwebefenster für die Bildschirmecke, ideal beim Arbeiten oder Zocken.
+* **Mehrsprachig (Multi-Language):** Vollständige Unterstützung für **Deutsch 🇩🇪**, **English 🇬🇧** und **Magyar 🇭🇺** (in den Einstellungen umschaltbar).
 
 ---
 
