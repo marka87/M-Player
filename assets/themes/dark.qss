@@ -208,6 +208,45 @@ QPushButton#playerBtn:hover {
     background-color: #252B34;
 }
 
+QPushButton#rowActionBtn {
+    background-color: #1E232A;
+    border: 1px solid #333842;
+    border-radius: 6px;
+    min-height: 28px;
+    max-height: 28px;
+    min-width: 34px;
+    max-width: 34px;
+    padding: 0px;
+}
+
+QPushButton#rowActionBtn:hover {
+    background-color: #282E38;
+    border-color: #4B5563;
+}
+
+QPushButton#rowActionBtn:pressed {
+    background-color: #171A1F;
+}
+
+QPushButton#rowActionBtnPrimary {
+    background-color: #1DB954;
+    border: none;
+    border-radius: 6px;
+    min-height: 28px;
+    max-height: 28px;
+    min-width: 34px;
+    max-width: 34px;
+    padding: 0px;
+}
+
+QPushButton#rowActionBtnPrimary:hover {
+    background-color: #1ED760;
+}
+
+QPushButton#rowActionBtnPrimary:pressed {
+    background-color: #179E46;
+}
+
 QPushButton#playPauseBtn {
     background-color: #3DDC63;
     border: none;

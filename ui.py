@@ -491,6 +491,8 @@ class SearchResultModel(QAbstractTableModel):
                 return item.get("artist", "")
             if col == 3:
                 d = item.get("duration", 0)
+                if isinstance(d, str):
+                    return d if ":" in d else (time_text(int(d)) if d.isdigit() else "--:--")
                 return time_text(d) if d else "--:--"
             if col == 4:
                 return str(item.get("type", "Song")).replace("🎵 ", "").replace("📋 ", "")
@@ -1215,7 +1217,7 @@ class MusicWindow(QMainWindow):
         # Collapsible Right Details Panel (Priority 7)
         self.details_panel = self._build_details_panel()
         body.addWidget(self.details_panel)
-        self.details_panel.hide()
+        self.details_panel.setVisible(False)
 
         main_layout.addLayout(body, 1)
 
@@ -1938,16 +1940,21 @@ class MusicWindow(QMainWindow):
 
         h = self.discover_table.horizontalHeader()
         h.setSectionResizeMode(0, QHeaderView.Fixed)
-        self.discover_table.setColumnWidth(0, 56)
+        self.discover_table.setColumnWidth(0, 60)
+
         h.setSectionResizeMode(1, QHeaderView.Stretch)
+
         h.setSectionResizeMode(2, QHeaderView.Interactive)
-        self.discover_table.setColumnWidth(2, 160)
+        self.discover_table.setColumnWidth(2, 220)
+
         h.setSectionResizeMode(3, QHeaderView.Fixed)
-        self.discover_table.setColumnWidth(3, 65)
+        self.discover_table.setColumnWidth(3, 70)
+
         h.setSectionResizeMode(4, QHeaderView.Fixed)
-        self.discover_table.setColumnWidth(4, 75)
+        self.discover_table.setColumnWidth(4, 80)
+
         h.setSectionResizeMode(5, QHeaderView.Fixed)
-        self.discover_table.setColumnWidth(5, 150)
+        self.discover_table.setColumnWidth(5, 170)
 
         self.discover_table.doubleClicked.connect(self._on_search_result_double_clicked)
         self.discover_table.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -1962,32 +1969,38 @@ class MusicWindow(QMainWindow):
             res = self.discover_model.rows[row]
             w = QWidget()
             w_layout = QHBoxLayout(w)
-            w_layout.setContentsMargins(2, 2, 2, 2)
-            w_layout.setSpacing(4)
+            w_layout.setContentsMargins(4, 2, 4, 2)
+            w_layout.setSpacing(6)
             w_layout.setAlignment(Qt.AlignCenter)
 
             if not res.get("is_playlist"):
-                play_btn = QPushButton("Vorhören")
-                play_btn.setObjectName("toolbarBtn")
+                play_btn = QPushButton()
+                play_btn.setObjectName("rowActionBtn")
                 play_btn.setIcon(get_icon("play"))
-                play_btn.setIconSize(QSize(13, 13))
-                play_btn.setToolTip("Vorhören per Direct-Stream (ohne Download)")
+                play_btn.setIconSize(QSize(15, 15))
+                play_btn.setFixedSize(36, 30)
+                play_btn.setToolTip("Vorhören")
+                play_btn.setCursor(Qt.PointingHandCursor)
                 play_btn.clicked.connect(lambda _, r=res: self.preview_stream(r))
                 w_layout.addWidget(play_btn)
 
-                dl_btn = QPushButton("Laden")
-                dl_btn.setObjectName("primaryBtn")
+                dl_btn = QPushButton()
+                dl_btn.setObjectName("rowActionBtnPrimary")
                 dl_btn.setIcon(get_icon("download"))
-                dl_btn.setIconSize(QSize(13, 13))
+                dl_btn.setIconSize(QSize(15, 15))
+                dl_btn.setFixedSize(36, 30)
                 dl_btn.setToolTip("In Bibliothek laden")
+                dl_btn.setCursor(Qt.PointingHandCursor)
                 dl_btn.clicked.connect(lambda _, r=res: self._handle_search_hit(r))
                 w_layout.addWidget(dl_btn)
             else:
-                pl_btn = QPushButton("Öffnen")
-                pl_btn.setObjectName("primaryBtn")
+                pl_btn = QPushButton()
+                pl_btn.setObjectName("rowActionBtnPrimary")
                 pl_btn.setIcon(get_icon("playlist"))
-                pl_btn.setIconSize(QSize(13, 13))
+                pl_btn.setIconSize(QSize(15, 15))
+                pl_btn.setFixedSize(36, 30)
                 pl_btn.setToolTip("Playlist im Downloader analysieren")
+                pl_btn.setCursor(Qt.PointingHandCursor)
                 pl_btn.clicked.connect(lambda _, r=res: self._handle_search_hit(r))
                 w_layout.addWidget(pl_btn)
 
