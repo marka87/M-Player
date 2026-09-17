@@ -87,3 +87,4 @@ def test_thumbnail_pregeneration_and_caching():
 
 if __name__ == "__main__":
     test_thumbnail_pregeneration_and_caching()
+

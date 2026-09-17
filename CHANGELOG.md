@@ -10,6 +10,7 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 ### Added
 - **High-Speed Mini-Thumbnails & Disk Caching**: Extrem schnelles Rendern und Scrollen in der Bibliothek durch vorberechnete 48x48 und 130x130 JPEG-Thumbnails auf der Festplatte. Kein zeitaufwendiges MP3-ID3-APIC-Parsing mehr im UI-Thread.
 - **Background Preload Task**: Neuer Hintergrund-Worker (`ThumbnailPreloadTask`), der nach Datei-Imports und Library-Syncs Thumbnails im Leerlauf vorberechnet.
+- **Schnellere YouTube-Suche**: Antwortzeiten mehr als halbiert durch 15-Treffer-Start-Batch, leichtgewichtigen Android-Client und kompakte 120x90 Thumbnails (~4 KB) statt schwerer HD-Bilder.
 - **Automatische Versionierung**: `bump.bat` und `scripts/bump_version.py` für automatisierte SemVer-Releases und Changelog-Generierung.
 
 ### Fixed

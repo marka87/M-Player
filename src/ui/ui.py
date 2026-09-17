@@ -176,7 +176,7 @@ def get_cover_pixmap(cover_source: str, size: int = 48) -> QPixmap:
                 else:
                     cached.parent.mkdir(parents=True, exist_ok=True)
                     req = urllib.request.Request(cover_source, headers={"User-Agent": "Mozilla/5.0"})
-                    with urllib.request.urlopen(req, timeout=1.5) as resp:
+                    with urllib.request.urlopen(req, timeout=0.6) as resp:
                         c_data = resp.read()
                     if c_data:
                         cached.write_bytes(c_data)
@@ -573,7 +573,7 @@ class Signals(QObject):
 
 
 class SearchTask(QRunnable):
-    def __init__(self, query: str, filter_type: str = "all", start: int = 1, limit: int = 30):
+    def __init__(self, query: str, filter_type: str = "all", start: int = 1, limit: int = 15):
         super().__init__()
         self.query = query
         self.filter_type = filter_type
@@ -592,7 +592,7 @@ class SearchTask(QRunnable):
                 "no_warnings": True,
                 "playliststart": self.start,
                 "playlistend": end,
-                "extractor_args": {"youtube": {"player_client": ["android", "ios", "mweb"]}},
+                "extractor_args": {"youtube": {"player_client": ["android"]}},
             }
             if self.filter_type == "playlist":
                 target = f"https://www.youtube.com/results?search_query={urllib.parse.quote(self.query)}&sp=EgIQAw%253D%253D"
@@ -620,8 +620,20 @@ class SearchTask(QRunnable):
                     else:
                         url = f"https://www.youtube.com/watch?v={v_id}"
 
+                # Prefer compact lightweight thumbnail (e.g. default.jpg ~120x90, ~4KB) for instant loading
                 thumbs = e.get("thumbnails", [])
-                thumb_url = thumbs[-1].get("url") if thumbs else (f"https://img.youtube.com/vi/{v_id}/hqdefault.jpg" if v_id else "")
+                thumb_url = ""
+                if thumbs:
+                    # Choose a small/medium thumbnail if available, avoid heavy maxresdefault
+                    for t in thumbs:
+                        u = t.get("url", "")
+                        if "default.jpg" in u or "mqdefault.jpg" in u:
+                            thumb_url = u
+                            break
+                    if not thumb_url:
+                        thumb_url = thumbs[0].get("url") or thumbs[-1].get("url") or ""
+                if not thumb_url and v_id:
+                    thumb_url = f"https://img.youtube.com/vi/{v_id}/default.jpg"
 
                 results.append({
                     "id": v_id,
@@ -2443,7 +2455,7 @@ class MusicWindow(QMainWindow):
         self.discover_has_more = True
         self.discover_status.setText(f"Suche nach „{query}“ …")
         self.discover_btn.setEnabled(False)
-        task = SearchTask(query, self.discover_filter, start=1, limit=30)
+        task = SearchTask(query, self.discover_filter, start=1, limit=15)
         task.signals.done.connect(self._on_search_done)
         task.signals.error.connect(self._on_search_error)
         self.start_task(task)
@@ -2453,7 +2465,7 @@ class MusicWindow(QMainWindow):
         self.discover_btn.setEnabled(True)
         self.discover_model.set_rows(results)
         self._attach_discover_action_buttons(0)
-        if len(results) < 30:
+        if len(results) < 15:
             self.discover_has_more = False
         self.discover_status.setText(f"{len(results)} Treffer gefunden.")
 
@@ -2466,7 +2478,7 @@ class MusicWindow(QMainWindow):
         self.discover_loading = True
         cur_count = len(self.discover_model.rows)
         self.discover_status.setText(f"{cur_count} Treffer (lädt weitere nach …)")
-        task = SearchTask(query, self.discover_filter, start=cur_count + 1, limit=30)
+        task = SearchTask(query, self.discover_filter, start=cur_count + 1, limit=15)
         task.signals.done.connect(self._on_search_more_done)
         task.signals.error.connect(lambda _: setattr(self, "discover_loading", False))
         self.start_task(task)
@@ -2477,7 +2489,7 @@ class MusicWindow(QMainWindow):
             self.discover_has_more = False
             self.discover_status.setText(f"{len(self.discover_model.rows)} Treffer (alle geladen).")
             return
-        if len(new_results) < 30:
+        if len(new_results) < 15:
             self.discover_has_more = False
         prev_count = len(self.discover_model.rows)
         self.discover_model.append_rows(new_results)
