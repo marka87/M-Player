@@ -26,7 +26,7 @@ logger = logging.getLogger("CoverEnricher")
 class CoverEnricher:
     """Fetches high-resolution album artwork and embeds it into MP3 ID3 tags."""
 
-    USER_AGENT = "MPlayer-CoverEnricher/2.0 (https://github.com/marka87/Musikapp)"
+    USER_AGENT = "MPlayer-CoverEnricher/2.0 (https://github.com/marka87/M-Player)"
 
     def __init__(self, timeout: int = 8) -> None:
         self.timeout = timeout

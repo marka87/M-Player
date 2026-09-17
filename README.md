@@ -39,7 +39,7 @@ Ein moderner, lokaler Windows-11-Musik-Manager mit eleganter PySide6-Oberfläche
 Es gibt zwei Möglichkeiten, M-Player zu nutzen:
 
 ### Option A: Portable Version (Empfohlen — Keine Installation nötig)
-1. Die fertige **`M-Player-Portable-v1.0.0.zip`** herunterladen und entpacken.
+1. Die neueste Version unter [Releases](https://github.com/marka87/M-Player/releases) herunterladen (`M-Player-Portable-v1.0.0.zip`) und entpacken.
 2. Doppelklick auf **`M-Player.exe`** – fertig!
 > *Hinweis:* FFmpeg, ffprobe und alle benötigten Tools sind im `bin/`-Ordner bereits enthalten. Die App kann direkt vom **USB-Stick** an jedem beliebigen Windows-PC gestartet werden.
 
@@ -61,8 +61,8 @@ Es gibt zwei Möglichkeiten, M-Player zu nutzen:
 #### 2. Setup
 Repository klonen und virtuelle Umgebung anlegen:
 ```powershell
-git clone https://github.com/marka87/Musikapp.git
-cd Musikapp
+git clone https://github.com/marka87/M-Player.git
+cd M-Player
 
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1

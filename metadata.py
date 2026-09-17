@@ -314,7 +314,7 @@ def resolve_album_online(artist: str, title: str, timeout: float = 3.5) -> tuple
         resp = requests.get(
             "https://musicbrainz.org/ws/2/recording/",
             params={"query": mb_query, "fmt": "json", "limit": 15},
-            headers={"User-Agent": "MPlayer/2.0 (https://github.com/marka87/Musikapp)"},
+            headers={"User-Agent": "MPlayer/2.0 (https://github.com/marka87/M-Player)"},
             timeout=timeout
         )
         if resp.status_code == 200:
