@@ -162,3 +162,10 @@ Der Entwickler von M-Player stellt lediglich die Software zur Verfügung und üb
 
 Nutze M-Player ausschließlich für Inhalte, deren Nutzung und Speicherung dir rechtlich erlaubt ist.
 
+---
+
+## 📄 Lizenz
+
+Dieses Projekt steht unter der MIT License. Details siehe `LICENSE`.
+
+
