@@ -29,3 +29,7 @@ Thumbs.db
 .DS_Store
 *.log
 
+# Build & packaging
+build/
+dist/
+*.spec

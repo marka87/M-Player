@@ -17,7 +17,10 @@ if __name__ == "__main__":
         except Exception:
             pass
 
-    base = Path(__file__).resolve().parent
+    if getattr(sys, "frozen", False):
+        base = Path(sys.executable).resolve().parent
+    else:
+        base = Path(__file__).resolve().parent
 
     import time
     import traceback
