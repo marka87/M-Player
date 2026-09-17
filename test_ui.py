@@ -111,6 +111,15 @@ def test_full_ui():
             assert chk.minimumHeight() >= 24
         win.save_settings()
 
+        # Check Preview Download button in Player Bar (hidden initially, visible during preview, hidden on playback)
+        assert hasattr(win, "bar_dl_btn")
+        assert not win.bar_dl_btn.isVisible()
+        win.preview_stream({"title": "Test Stream", "artist": "Tester", "url": "https://youtu.be/12345"})
+        assert win.bar_dl_btn.isVisible()
+        # Normal playback hides it again
+        win.play({"id": 1, "title": "Song One", "artist": "Artist A", "file_path": str(f1), "favorite": 0, "collection": ""})
+        assert not win.bar_dl_btn.isVisible()
+
         # Check Discover pagination & append_rows
         initial_hits = [{"id": "1", "title": "Song 1", "artist": "Artist 1", "duration": 120, "url": "https://...", "cover_url": "", "is_playlist": False, "type": "🎵 Song"}]
         win.discover_model.set_rows(initial_hits)

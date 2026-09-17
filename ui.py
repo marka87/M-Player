@@ -1951,6 +1951,12 @@ class MusicWindow(QMainWindow):
             "is_stream": True,
         }
         self.current_track = virtual_track
+        self._preview_track_info = res
+        if hasattr(self, "bar_dl_btn"):
+            self.bar_dl_btn.show()
+            self.bar_dl_btn.setEnabled(True)
+            self.bar_dl_btn.setIcon(get_icon("download"))
+            self.bar_dl_btn.setToolTip(tr("btn_add_to_library"))
 
         if hasattr(self, "mini_player"):
             self.mini_player.update_track(virtual_track)
@@ -2418,12 +2424,23 @@ class MusicWindow(QMainWindow):
         res = self.discover_model.rows[row]
         self._handle_search_hit(res)
 
-    def _handle_search_hit(self, res: dict):
+    def _download_preview_track(self):
+        track_info = getattr(self, "_preview_track_info", None)
+        if track_info:
+            self._handle_search_hit(track_info, switch_tab=False)
+            if hasattr(self, "bar_dl_btn"):
+                self.bar_dl_btn.setEnabled(False)
+                self.bar_dl_btn.setIcon(get_icon("check"))
+                self.bar_dl_btn.setToolTip("Download gestartet")
+            self.notify("Download gestartet", f"{track_info.get('title', 'Song')} wird heruntergeladen.")
+
+    def _handle_search_hit(self, res: dict, switch_tab: bool = True):
         if res.get("is_playlist"):
             self.links.setText(res["url"])
-            self.nav.setCurrentRow(2)
-            if hasattr(self, "_switch_downloads_tab"):
-                self._switch_downloads_tab(1)
+            if switch_tab:
+                self.nav.setCurrentRow(2)
+                if hasattr(self, "_switch_downloads_tab"):
+                    self._switch_downloads_tab(1)
             self.analyze()
         else:
             track = TrackMetadata(
@@ -2453,9 +2470,10 @@ class MusicWindow(QMainWindow):
             task.signals.status.connect(self._on_download_status)
             self.start_task(task)
             self.update_queue_stats()
-            self.nav.setCurrentRow(2)
-            if hasattr(self, "_switch_downloads_tab"):
-                self._switch_downloads_tab(2)
+            if switch_tab:
+                self.nav.setCurrentRow(2)
+                if hasattr(self, "_switch_downloads_tab"):
+                    self._switch_downloads_tab(2)
 
     def _search_context_menu(self, point):
         idx = self.discover_table.indexAt(point)
@@ -3265,8 +3283,13 @@ class MusicWindow(QMainWindow):
         # Quick action buttons in mini player (reduced to just Favorite)
         self.bar_fav_btn = self._button("", self._toggle_current_fav, obj_name="playerBtn", icon=get_icon("heart"), icon_size=QSize(18, 18))
         self.bar_fav_btn.setToolTip(tr("filter_favorites"))
-
         left.addWidget(self.bar_fav_btn)
+
+        self.bar_dl_btn = self._button("", self._download_preview_track, obj_name="playerBtn", icon=get_icon("download"), icon_size=QSize(18, 18))
+        self.bar_dl_btn.setToolTip(tr("btn_add_to_library"))
+        self.bar_dl_btn.hide()
+        left.addWidget(self.bar_dl_btn)
+
         layout.addWidget(left_widget, 1)
 
         # Center Zone: Playback Controls & Timeline
@@ -3760,6 +3783,10 @@ class MusicWindow(QMainWindow):
 
         if hasattr(self, "bar_fav_btn"):
             self.bar_fav_btn.setIcon(get_icon("heart-filled" if fav else "heart"))
+
+        if hasattr(self, "bar_dl_btn"):
+            self.bar_dl_btn.hide()
+            self._preview_track_info = None
 
 
         if coll and coll not in ("Einzeltitel", "Single") and hasattr(self, "bar_pl_badge"):
