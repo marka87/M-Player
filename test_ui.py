@@ -50,9 +50,27 @@ def test_full_ui():
         assert not win.windowIcon().isNull()
 
         # Check pages (Bibliothek, Playlists, Downloads, Tools, Einstellungen, Favoriten)
+        from ui import DownloaderDisclaimerDialog
+        from unittest.mock import patch
+
+        # Test Downloader Disclaimer Dialog properties
+        disclaimer_dlg = DownloaderDisclaimerDialog(win)
+        assert disclaimer_dlg.windowTitle() == "Rechtlicher Hinweis"
+        assert disclaimer_dlg.width() <= 600
+        assert disclaimer_dlg.maximumWidth() <= 600
+        assert disclaimer_dlg.chk_dont_show.isChecked()
+        assert not disclaimer_dlg.windowIcon().isNull()
+
         assert win.pages.count() == 6
-        for p_idx in range(6):
-            win.show_page(p_idx)
+        with patch.object(DownloaderDisclaimerDialog, "exec", return_value=1):
+            for p_idx in range(6):
+                win.show_page(p_idx)
+
+        # Confirm setting was saved to DB and second visit does not re-trigger
+        assert db.get_setting("downloader_disclaimer_seen", "0") == "1"
+        with patch.object(DownloaderDisclaimerDialog, "exec") as mock_exec:
+            win.show_page(2)
+            mock_exec.assert_not_called()
 
         # Check Discover (YouTube-Suche) components
         assert hasattr(win, "discover_input")

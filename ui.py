@@ -1085,6 +1085,68 @@ class DuplicateFinderDialog(QDialog):
         super().reject()
 
 
+class DownloaderDisclaimerDialog(QDialog):
+    """Disclaimer dialog shown upon first entering the downloader tab."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Rechtlicher Hinweis")
+        self.setWindowIcon(get_icon("info"))
+        self.setFixedWidth(540)
+        self.setMaximumWidth(600)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 22, 24, 20)
+        layout.setSpacing(16)
+
+        # Header with icon & title
+        header = QHBoxLayout()
+        header.setSpacing(12)
+        icon_lbl = QLabel()
+        icon_lbl.setPixmap(get_icon("info").pixmap(QSize(28, 28)))
+        title_lbl = QLabel("Rechtlicher Hinweis")
+        title_lbl.setStyleSheet("font-size: 16px; font-weight: 700; color: #FFFFFF;")
+        header.addWidget(icon_lbl)
+        header.addWidget(title_lbl)
+        header.addStretch()
+        layout.addLayout(header)
+
+        # Body text from README
+        body_text = (
+            "M-Player stellt Funktionen zum Herunterladen und Verwalten von Audiodateien bereit. "
+            "Die Nutzung dieser Funktionen muss den in deinem Land geltenden Urheberrechtsgesetzen entsprechen.\n\n"
+            "Der Download oder die Speicherung von urheberrechtlich geschützten Inhalten ist nur zulässig, "
+            "wenn du dazu berechtigt bist, beispielsweise durch eine Lizenz, die Zustimmung des Rechteinhabers "
+            "oder eine gesetzliche Ausnahme, soweit diese an deinem Wohnort gilt.\n\n"
+            "Der Entwickler von M-Player stellt lediglich die Software zur Verfügung und übernimmt keine "
+            "Verantwortung für eine rechtswidrige Nutzung oder Urheberrechtsverletzungen durch die Anwender.\n\n"
+            "Nutze M-Player ausschließlich für Inhalte, deren Nutzung und Speicherung dir rechtlich erlaubt ist."
+        )
+        body_lbl = QLabel(body_text)
+        body_lbl.setWordWrap(True)
+        body_lbl.setStyleSheet("font-size: 12px; line-height: 1.45; color: #C8CDD5;")
+        layout.addWidget(body_lbl)
+
+        # Bottom row: Checkbox + Button
+        bottom_layout = QHBoxLayout()
+        bottom_layout.setContentsMargins(0, 8, 0, 0)
+
+        self.chk_dont_show = QCheckBox("Nicht mehr anzeigen.")
+        self.chk_dont_show.setChecked(True)
+        self.chk_dont_show.setCursor(Qt.PointingHandCursor)
+
+        btn_ok = QPushButton("Ich verstehe")
+        btn_ok.setObjectName("accent")
+        btn_ok.setFixedSize(120, 34)
+        btn_ok.setCursor(Qt.PointingHandCursor)
+        btn_ok.clicked.connect(self.accept)
+
+        bottom_layout.addWidget(self.chk_dont_show)
+        bottom_layout.addStretch()
+        bottom_layout.addWidget(btn_ok)
+        layout.addLayout(bottom_layout)
+
+
 class MusicWindow(QMainWindow):
     def __init__(self, database: MusicDatabase, music_root: Path):
         super().__init__()
@@ -3381,12 +3443,21 @@ class MusicWindow(QMainWindow):
         self.player.durationChanged.connect(self._on_duration_changed)
         return bar
 
+    def _check_downloader_disclaimer(self):
+        if self.db.get_setting("downloader_disclaimer_seen", "0") != "1":
+            dlg = DownloaderDisclaimerDialog(self)
+            if dlg.exec():
+                if dlg.chk_dont_show.isChecked():
+                    self.db.set_setting("downloader_disclaimer_seen", "1")
+
     def show_page(self, index: int):
         self.pages.setCurrentIndex(index)
         if index in (0, 5):
             self.refresh_library()
         elif index == 1:
             self.refresh_playlists()
+        elif index == 2:
+            self._check_downloader_disclaimer()
 
     def on_search_changed(self, text: str):
         self.search_timer.start()

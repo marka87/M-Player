@@ -32,3 +32,4 @@ Dieses Dokument führt die wichtigsten Drittanbieter-Bibliotheken, externen Werk
 ---
 
 *Für die vollständigen Lizenzbestimmungen der jeweiligen Komponenten verweisen wir auf die offiziellen Webseiten und Repositories der Entwickler.*
+
