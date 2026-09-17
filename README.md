@@ -151,6 +151,14 @@ Das Repository verfügt über eine automatisierte GitHub Actions Pipeline (`.git
 
 ---
 
+
 ## ⚖️ Rechtlicher Hinweis
 
-**Achtung:** Der Download von urheberrechtlich geschützter Musik aus dem Internet (z. B. von YouTube oder Spotify) ist nur dann gestattet, wenn es in deinem Land gesetzlich erlaubt ist (z. B. im Rahmen des Rechts auf eine Privatkopie) oder du die ausdrückliche Erlaubnis des Rechteinhabers hast. Der Entwickler von M-Player übernimmt keine Haftung für illegale Downloads oder Urheberrechtsverletzungen, die durch die Nutzung dieser Software entstehen. Nutze das Tool verantwortungsvoll und lade nur Lieder herunter, für die du die rechtliche Erlaubnis hast.
+M-Player stellt Funktionen zum Herunterladen und Verwalten von Audiodateien bereit. Die Nutzung dieser Funktionen muss den in deinem Land geltenden Urheberrechtsgesetzen entsprechen.
+
+Der Download oder die Speicherung von urheberrechtlich geschützten Inhalten ist nur zulässig, wenn du dazu berechtigt bist, beispielsweise durch eine Lizenz, die Zustimmung des Rechteinhabers oder eine gesetzliche Ausnahme, soweit diese an deinem Wohnort gilt.
+
+Der Entwickler von M-Player stellt lediglich die Software zur Verfügung und übernimmt keine Verantwortung für eine rechtswidrige Nutzung oder Urheberrechtsverletzungen durch die Anwender.
+
+Nutze M-Player ausschließlich für Inhalte, deren Nutzung und Speicherung dir rechtlich erlaubt ist.
+
