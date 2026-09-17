@@ -224,8 +224,38 @@ QPushButton#playPauseBtn:hover {
 }
 
 /* =========================================================
-   4. BIBLIOTHEK QTABLEVIEW (#151920, Hover #20262F, Sel #21412D)
+   4. LISTS & TABLES (#151920, Hover #20262F, Sel #21412D)
    ========================================================= */
+QListWidget, QListView {
+    background-color: #151920;
+    border: 1px solid #262B34;
+    border-radius: 14px;
+    color: #F4F4F4;
+    outline: none;
+}
+
+QListWidget#playlistGrid {
+    background-color: #151920;
+    border: 1px solid #262B34;
+    border-radius: 14px;
+    padding: 10px;
+}
+
+QListWidget#playlistGrid::item {
+    background-color: #1A1F26;
+    border: 1px solid #262B34;
+    border-radius: 12px;
+    padding: 10px;
+    color: #F4F4F4;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QListWidget#playlistGrid::item:hover {
+    background-color: #20262F;
+    border-color: #3DDC63;
+}
+
 QTableView {
     background-color: #151920;
     border: 1px solid #262B34;

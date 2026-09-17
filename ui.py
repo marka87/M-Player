@@ -1872,7 +1872,7 @@ class MusicWindow(QMainWindow):
         self.disc_preview_btn.setToolTip("Ausgewählten Song vorhören (Direct Stream)")
         filter_row.addWidget(self.disc_preview_btn)
 
-        self.disc_action_btn = self._button("In Bibliothek laden", self._download_selected_search_result, True, icon=get_icon("download"))
+        self.disc_action_btn = self._button("Laden", self._download_selected_search_result, True, icon=get_icon("download"))
         self.disc_action_btn.setToolTip("Ausgewählten Treffer herunterladen")
         filter_row.addWidget(self.disc_action_btn)
         layout.addLayout(filter_row)
@@ -1890,13 +1890,13 @@ class MusicWindow(QMainWindow):
         self.discover_table.setColumnWidth(0, 56)
         h.setSectionResizeMode(1, QHeaderView.Stretch)
         h.setSectionResizeMode(2, QHeaderView.Interactive)
-        self.discover_table.setColumnWidth(2, 220)
+        self.discover_table.setColumnWidth(2, 160)
         h.setSectionResizeMode(3, QHeaderView.Fixed)
-        self.discover_table.setColumnWidth(3, 80)
+        self.discover_table.setColumnWidth(3, 65)
         h.setSectionResizeMode(4, QHeaderView.Fixed)
-        self.discover_table.setColumnWidth(4, 90)
+        self.discover_table.setColumnWidth(4, 75)
         h.setSectionResizeMode(5, QHeaderView.Fixed)
-        self.discover_table.setColumnWidth(5, 175)
+        self.discover_table.setColumnWidth(5, 150)
 
         self.discover_table.doubleClicked.connect(self._on_search_result_double_clicked)
         self.discover_table.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -2124,7 +2124,8 @@ class MusicWindow(QMainWindow):
         stats_lbl = QLabel("")
         stats_lbl.setObjectName("secondary")
         stats_lbl.setStyleSheet("font-size: 13px; font-weight: 500; margin-left: 8px;")
-        tb_layout.addWidget(stats_lbl)
+        stats_lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        tb_layout.addWidget(stats_lbl, 1)
 
         tb_layout.addStretch()
 
@@ -2160,8 +2161,8 @@ class MusicWindow(QMainWindow):
         search_input.setObjectName("searchBar")
         search_input.setPlaceholderText("Suchen …")
         search_input.addAction(get_icon("search"), QLineEdit.LeadingPosition)
-        search_input.setMinimumWidth(180)
-        search_input.setMaximumWidth(320)
+        search_input.setMinimumWidth(120)
+        search_input.setMaximumWidth(260)
         search_input.textChanged.connect(self.on_search_changed)
         tb_layout.addWidget(search_input)
 
@@ -2197,7 +2198,19 @@ class MusicWindow(QMainWindow):
                 self.chip_buttons[key] = btn
 
             chip_layout.addStretch()
-            layout.addWidget(chip_frame)
+
+            chip_scroll = QScrollArea()
+            chip_scroll.setWidgetResizable(True)
+            chip_scroll.setFrameShape(QFrame.NoFrame)
+            chip_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            chip_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            chip_scroll.setFixedHeight(44)
+            chip_scroll.setStyleSheet("background: transparent; border: none;")
+            chip_scroll.wheelEvent = lambda ev: chip_scroll.horizontalScrollBar().setValue(
+                chip_scroll.horizontalScrollBar().value() - ev.angleDelta().y()
+            )
+            chip_scroll.setWidget(chip_frame)
+            layout.addWidget(chip_scroll)
 
         # Table View
         model = TrackModel(selectable=True)
@@ -2384,17 +2397,17 @@ class MusicWindow(QMainWindow):
         # Proportional balanced width distribution
         header.setSectionResizeMode(2, QHeaderView.Stretch)
         header.setSectionResizeMode(3, QHeaderView.Interactive)
-        table.setColumnWidth(3, 260)
+        table.setColumnWidth(3, 170)
         header.setSectionResizeMode(4, QHeaderView.Interactive)
-        table.setColumnWidth(4, 240)
+        table.setColumnWidth(4, 150)
         header.setSectionResizeMode(5, QHeaderView.Fixed)
-        table.setColumnWidth(5, 70)
+        table.setColumnWidth(5, 65)
         header.setSectionResizeMode(6, QHeaderView.Fixed)
-        table.setColumnWidth(6, 60)
+        table.setColumnWidth(6, 55)
         header.setSectionResizeMode(7, QHeaderView.Fixed)
-        table.setColumnWidth(7, 85)
+        table.setColumnWidth(7, 70)
         header.setSectionResizeMode(8, QHeaderView.Fixed)
-        table.setColumnWidth(8, 105)
+        table.setColumnWidth(8, 80)
 
         table.setAcceptDrops(True)
         table.dragEnterEvent = self.dragEnterEvent
@@ -2534,6 +2547,7 @@ class MusicWindow(QMainWindow):
         ov_layout.addLayout(top_row)
 
         self.pl_cards = QListWidget()
+        self.pl_cards.setObjectName("playlistGrid")
         self.pl_cards.setViewMode(QListWidget.IconMode)
         self.pl_cards.setIconSize(QSize(150, 150))
         self.pl_cards.setGridSize(QSize(210, 250))
@@ -2616,6 +2630,7 @@ class MusicWindow(QMainWindow):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setObjectName("settingsScroll")
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         content = QFrame()
         content.setObjectName("card")
@@ -2668,19 +2683,19 @@ class MusicWindow(QMainWindow):
         chk_layout.setContentsMargins(16, 14, 16, 14)
         chk_layout.setSpacing(10)
 
-        self.chk_auto_cover = QCheckBox("Automatisch Albumcover laden (iTunes 1000x1000, Deezer, MusicBrainz)")
+        self.chk_auto_cover = QCheckBox("Albumcover automatisch online laden (iTunes, Deezer)")
         self.chk_auto_cover.setChecked(self.settings.get("auto_cover", "1") == "1")
 
-        self.chk_auto_meta = QCheckBox("Automatisch Metadaten aktualisieren")
+        self.chk_auto_meta = QCheckBox("Metadaten automatisch aktualisieren")
         self.chk_auto_meta.setChecked(self.settings.get("auto_metadata", "1") == "1")
 
-        self.chk_only_new = QCheckBox("Nur neue Songs herunterladen (bereits vorhandene überspringen)")
+        self.chk_only_new = QCheckBox("Nur neue Songs laden (Duplikate überspringen)")
         self.chk_only_new.setChecked(self.settings.get("only_new", "1") == "1")
 
-        self.chk_cleanup_startup = QCheckBox("Fehlende Dateien beim Programmstart automatisch bereinigen")
+        self.chk_cleanup_startup = QCheckBox("Fehlende Dateien beim Programmstart bereinigen")
         self.chk_cleanup_startup.setChecked(self.settings.get("cleanup_missing_startup", "0") == "1")
 
-        self.chk_auto_sync_pl = QCheckBox("Playlist automatisch synchronisieren")
+        self.chk_auto_sync_pl = QCheckBox("Playlists automatisch synchronisieren")
         self.chk_auto_sync_pl.setChecked(self.settings.get("auto_sync_playlist", "0") == "1")
 
         for chk in (self.chk_auto_cover, self.chk_auto_meta, self.chk_only_new, self.chk_cleanup_startup, self.chk_auto_sync_pl):
