@@ -19,9 +19,16 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 BASE_DIR = Path(__file__).resolve().parents[1]
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+try:
+    from src import __version__ as VERSION
+except ImportError:
+    VERSION = "v1.0.2"
+
 DIST_DIR = BASE_DIR / "dist"
 BUILD_DIR = BASE_DIR / "build"
-VERSION = "v1.0.2"
 
 IS_WINDOWS = sys.platform == "win32"
 EXE_NAME = "M-Player.exe" if IS_WINDOWS else "M-Player"

@@ -9,10 +9,9 @@ if str(_ROOT) not in sys.path:
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
+from src import __version__
 from src.database.database import MusicDatabase
 from src.ui.ui import MusicWindow
-
-__version__ = "v1.0.2"
 
 if __name__ == "__main__":
     if sys.platform == "win32":

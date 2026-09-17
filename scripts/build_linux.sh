@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$BASE_DIR"
 
-VERSION="v1.0.2"
+VERSION=$(grep -o '__version__ = "[^"]*"' src/__init__.py 2>/dev/null | cut -d'"' -f2 || echo "v1.0.2")
 DIST_DIR="$BASE_DIR/dist"
 BUILD_DIR="$BASE_DIR/build"
 APPDIR="$BUILD_DIR/AppDir"

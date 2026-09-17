@@ -124,6 +124,23 @@ chmod +x scripts/build_linux.sh
 ```
 Erstellt sowohl das `dist/M-Player-Linux-vX.X.X.tar.gz` als auch die `dist/M-Player-vX.X.X-x86_64.AppImage`.
 
+### 🔢 Automatische Versionierung
+
+Um die Versionsnummer automatisch nach [Semantic Versioning](https://semver.org/lang/de/) zu erhöhen:
+
+```bash
+# Bugfix / kleine Änderung (1.0.2 -> 1.0.3):
+bump.bat patch
+# oder: python scripts/bump_version.py patch
+
+# Neues Feature (1.0.2 -> 1.1.0):
+bump.bat minor
+
+# Aktuelle Version anzeigen:
+bump.bat current
+```
+Das Skript aktualisiert zentral `src/__init__.py` und bereitet den neuen Eintrag in `CHANGELOG.md` automatisch mit aktuellem Datum vor.
+
 ### 🤖 Automatisierte Builds (GitHub Actions CI/CD)
 Das Repository verfügt über eine automatisierte GitHub Actions Pipeline (`.github/workflows/build-release.yml`):
 * Sobald ein Versions-Tag gepusht wird (z. B. `git tag v1.0.1 && git push origin v1.0.1`), bauen parallele Runner automatisch die Windows- und Linux-Pakete.
