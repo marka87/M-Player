@@ -15,6 +15,7 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 - **Lizenzdokumentation**: Hinzufügen von `LICENSE` (MIT License) und `THIRD_PARTY_NOTICES.md`.
 
 ### Changed
+- **Repository-Struktur**: Professionelle Modularisierung des Codes in `src/` (`database`, `services`, `translations`, `ui`), `scripts/` und `tests/`.
 - **UX-Redesign**: Zusammenlegung von In-App-Suche (Entdecken), Link-Download und Warteschlange in eine einheitliche Ansicht mit Reitern.
 - Versionsnummer auf `v1.0.2` angehoben.
 
@@ -48,3 +49,4 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 - **Album Resolver**: Erkennung fehlender Albumnamen und Veröffentlichungsjahre über Online-APIs.
 - **Mehrsprachigkeit**: Grundstruktur für mehrsprachige Benutzeroberflächen.
 - **Portable Version**: Skript zur Erstellung einer portablen, eigenständigen Windows-Version inklusive FFmpeg.
+

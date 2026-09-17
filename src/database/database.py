@@ -7,7 +7,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-from metadata import safe_name
+from src.services.metadata import safe_name
 
 
 class MusicDatabase:
@@ -285,7 +285,7 @@ class MusicDatabase:
     def sync_library(self, music_root: Path, progress_callback=None, resolve_albums: bool = True) -> tuple[int, int]:
         from mutagen.mp3 import MP3
         from mutagen.id3 import ID3, TALB, TDRC
-        from metadata import TrackMetadata, resolve_album_online
+        from src.services.metadata import TrackMetadata, resolve_album_online
 
         music_root = Path(music_root)
         files = list(music_root.rglob("*.mp3"))
@@ -414,7 +414,7 @@ class MusicDatabase:
     def find_duplicates(self, duration_tolerance: float = 2.0, similarity_threshold: float = 0.85) -> list[list[dict]]:
         """Find potential duplicate tracks based on fuzzy title matching and duration tolerance."""
         from difflib import SequenceMatcher
-        from metadata import clean_artist_title
+        from src.services.metadata import clean_artist_title
 
         with self._connection() as conn:
             rows = conn.execute("SELECT id, title, artist, album, duration, bitrate, file_path, play_count, added_at FROM tracks").fetchall()

@@ -113,14 +113,14 @@ python3 main.py
 
 ### Auf Windows
 ```powershell
-.\.venv\Scripts\python.exe build_portable.py
+.\.venv\Scripts\python.exe scripts/build_portable.py
 ```
 Erstellt das fertige Standalone-Paket `dist/M-Player-Portable-vX.X.X.zip`.
 
 ### Auf Linux
 ```bash
-chmod +x build_linux.sh
-./build_linux.sh
+chmod +x scripts/build_linux.sh
+./scripts/build_linux.sh
 ```
 Erstellt sowohl das `dist/M-Player-Linux-vX.X.X.tar.gz` als auch die `dist/M-Player-vX.X.X-x86_64.AppImage`.
 

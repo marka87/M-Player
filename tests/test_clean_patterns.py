@@ -1,6 +1,11 @@
-"""Tests for YouTube tag & channel cleaning patterns in metadata.py."""
+import sys
+from pathlib import Path
 
-from metadata import clean_artist_title
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.services.metadata import clean_artist_title
 
 
 def test_artist_patterns():

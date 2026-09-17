@@ -1,4 +1,11 @@
-from i18n import LANGUAGES, TRANSLATIONS, set_language, get_language, tr, DEFAULT_LANGUAGE
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.translations.i18n import LANGUAGES, TRANSLATIONS, set_language, get_language, tr, DEFAULT_LANGUAGE
 
 def test_languages_defined():
     assert "de" in LANGUAGES

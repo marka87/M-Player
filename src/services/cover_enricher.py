@@ -15,7 +15,7 @@ from typing import Callable
 import urllib.parse
 import urllib.request
 
-from metadata import safe_name
+from src.services.metadata import safe_name
 
 import mutagen
 from mutagen.id3 import ID3, APIC, ID3NoHeaderError

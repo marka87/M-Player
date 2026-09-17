@@ -5,12 +5,16 @@ import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 from PySide6.QtWidgets import QApplication, QMessageBox
-from database import MusicDatabase
-from metadata import TrackMetadata
-from ui import MusicWindow
+from src.database.database import MusicDatabase
+from src.services.metadata import TrackMetadata
+from src.ui.ui import MusicWindow
 
 # Mock modal message boxes
 QMessageBox.information = lambda *args, **kwargs: QMessageBox.StandardButton.Ok
@@ -50,7 +54,7 @@ def test_full_ui():
         assert not win.windowIcon().isNull()
 
         # Check pages (Bibliothek, Playlists, Downloads, Tools, Einstellungen, Favoriten)
-        from ui import DownloaderDisclaimerDialog
+        from src.ui.ui import DownloaderDisclaimerDialog
         from unittest.mock import patch
 
         # Test Downloader Disclaimer Dialog properties
@@ -147,7 +151,7 @@ def test_full_ui():
         assert win.discover_model.rowCount() == 2
 
         # Check cover resolution for MP3 files (embedded & folder cover.jpg)
-        from ui import get_cover_pixmap
+        from src.ui.ui import get_cover_pixmap
         # Test folder cover.jpg
         test_cover = f1.parent / "cover.jpg"
         from PySide6.QtGui import QPixmap
@@ -218,7 +222,7 @@ def test_full_ui():
         assert win.settings.get("theme") == "dark.qss"
 
         # 1. Test Auto Tag-Cleaner logic
-        from metadata import clean_artist_title, clean_track_id3
+        from src.services.metadata import clean_artist_title, clean_track_id3
         c_title, c_artist = clean_artist_title("Faithless - God Is a DJ (Official Video)")
         assert c_title == "God Is a DJ"
         assert c_artist == "Faithless"
@@ -251,7 +255,7 @@ def test_full_ui():
         assert not win.mini_player.isVisible()
 
         # 4. Test Direct-Stream Preview (Pre-Listening)
-        from downloader import get_stream_url
+        from src.services.downloader import get_stream_url
         assert callable(get_stream_url)
         assert hasattr(win, "preview_stream")
         assert hasattr(win, "disc_preview_btn")
@@ -278,7 +282,7 @@ def test_full_ui():
         assert win.current_track["is_stream"] is True
 
         # 5. Test Similar Songs / Recommendations (Radio)
-        from recommendations import fetch_recommendations
+        from src.services.recommendations import fetch_recommendations
         assert callable(fetch_recommendations)
         assert hasattr(win, "detail_tab_similar")
         assert hasattr(win, "similar_list")

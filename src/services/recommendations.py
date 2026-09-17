@@ -5,7 +5,7 @@ from __future__ import annotations
 import functools
 import re
 import yt_dlp
-from metadata import clean_artist_title
+from src.services.metadata import clean_artist_title
 
 
 @functools.lru_cache(maxsize=128)

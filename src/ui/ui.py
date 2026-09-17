@@ -24,12 +24,12 @@ import subprocess
 import sys
 import urllib.parse
 
-from database import MusicDatabase
-from downloader import DownloadCancelled, MusicDownloader, get_stream_url
-from metadata import TrackMetadata, safe_name, read_audio_tags, clean_artist_title, clean_track_id3
-from mini_player import MiniPlayerWindow
-from recommendations import fetch_recommendations
-from i18n import LANGUAGES, set_language, get_language, tr
+from src.database.database import MusicDatabase
+from src.services.downloader import DownloadCancelled, MusicDownloader, get_stream_url
+from src.services.metadata import TrackMetadata, safe_name, read_audio_tags, clean_artist_title, clean_track_id3
+from src.ui.mini_player import MiniPlayerWindow
+from src.services.recommendations import fetch_recommendations
+from src.translations.i18n import LANGUAGES, set_language, get_language, tr
 
 
 class ClickableSlider(QSlider):
@@ -147,7 +147,11 @@ def _track_id(track) -> int | None:
     return getattr(track, "id", None)
 
 
-_APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+if getattr(sys, "frozen", False):
+    _APP_DIR = Path(sys.executable).resolve().parent
+else:
+    _root_cand = Path(__file__).resolve().parents[2]
+    _APP_DIR = _root_cand if (_root_cand / "assets").is_dir() else Path(__file__).resolve().parent
 ICON_DIR = _APP_DIR / "assets" / "icons"
 
 
@@ -702,7 +706,7 @@ class CoverFinderTask(QRunnable):
 
     def run(self):
         try:
-            from cover_enricher import CoverEnricher
+            from src.services.cover_enricher import CoverEnricher
             enricher = CoverEnricher()
             tracks = self.db.tracks()
             total = len(tracks)
@@ -727,7 +731,7 @@ class StreamUrlTask(QRunnable):
 
     def run(self):
         try:
-            from downloader import get_stream_url
+            from src.services.downloader import get_stream_url
             url = get_stream_url(self.youtube_url)
             try:
                 self.signals.done.emit(url)
@@ -750,7 +754,7 @@ class RecommendationsTask(QRunnable):
 
     def run(self):
         try:
-            from recommendations import fetch_recommendations
+            from src.services.recommendations import fetch_recommendations
             items = fetch_recommendations(self.artist, self.title, self.source_url)
             # Pre-cache thumbnails in background thread so GUI doesn't freeze
             import hashlib, tempfile, urllib.request
@@ -1573,9 +1577,12 @@ class MusicWindow(QMainWindow):
         sidebar_layout.addWidget(self.sidebar_stats_lbl)
 
         try:
-            from main import __version__
+            from src import __version__
         except ImportError:
-            __version__ = "v1.0.2"
+            try:
+                from main import __version__
+            except ImportError:
+                __version__ = "v1.0.2"
 
         self.version_lbl = QLabel(__version__)
         self.version_lbl.setStyleSheet("color: #6a7282; font-size: 11px; padding-top: 4px;")
@@ -3266,9 +3273,12 @@ class MusicWindow(QMainWindow):
         layout.addStretch()
 
         try:
-            from main import __version__
+            from src import __version__
         except ImportError:
-            __version__ = "v1.0.2"
+            try:
+                from main import __version__
+            except ImportError:
+                __version__ = "v1.0.2"
 
         footer_lbl = QLabel(f"M-Player {__version__} • Made by marka87")
         footer_lbl.setObjectName("secondary")
@@ -4033,7 +4043,7 @@ class MusicWindow(QMainWindow):
             QMessageBox.warning(self, "Datei fehlt", f"Die Datei {file_path.name} wurde nicht gefunden.")
             return
 
-        from cover_enricher import CoverEnricher
+        from src.services.cover_enricher import CoverEnricher
         enricher = CoverEnricher()
         src_url = track["source_url"] if "source_url" in track.keys() else getattr(track, "source_url", "")
         ok = enricher.enrich_file(file_path, force=True, music_root=self.music_root, source_url=src_url)

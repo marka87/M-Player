@@ -1,9 +1,13 @@
-"""Tests for duplicate detection in MusicDatabase."""
-
+import sys
 import tempfile
 from pathlib import Path
-from database import MusicDatabase
-from metadata import TrackMetadata
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.database.database import MusicDatabase
+from src.services.metadata import TrackMetadata
 
 
 def test_find_duplicates():

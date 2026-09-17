@@ -1,11 +1,16 @@
 """Tests for automated album recognition and library sync."""
 
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from database import MusicDatabase
-from metadata import TrackMetadata, resolve_album_online
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.database.database import MusicDatabase
+from src.services.metadata import TrackMetadata, resolve_album_online
 
 
 def test_resolve_album_mocked():
@@ -45,7 +50,7 @@ def test_sync_library_detects_album():
         db_path = Path(tmpdir) / "library.db"
         db = MusicDatabase(db_path)
 
-        with patch("metadata.resolve_album_online") as mock_resolve:
+        with patch("src.services.metadata.resolve_album_online") as mock_resolve:
             mock_resolve.return_value = ("A Night at the Opera", "1975")
 
             # 1. First sync: new file discovered and album resolved

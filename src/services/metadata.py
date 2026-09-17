@@ -96,7 +96,7 @@ def find_or_fetch_cover(artist: str, album: str, music_root: Path, file_path: Pa
         local_cover = file_path.parent / "cover.jpg"
         if local_cover.is_file():
             return local_cover
-    from cover_enricher import CoverEnricher
+    from src.services.cover_enricher import CoverEnricher
     enricher = CoverEnricher(timeout=5)
     res = enricher.find_cover(artist, album, music_root=music_root)
     if res:

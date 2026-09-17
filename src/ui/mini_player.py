@@ -7,7 +7,7 @@ from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPainter
 from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QPushButton, QSlider,
                              QVBoxLayout, QWidget)
 
-from metadata import safe_name
+from src.services.metadata import safe_name
 
 
 class MiniPlayerWindow(QWidget):
@@ -141,7 +141,7 @@ class MiniPlayerWindow(QWidget):
 
         self.prev_btn = QPushButton()
         self.prev_btn.setFixedSize(24, 24)
-        from ui import get_icon
+        from src.ui.ui import get_icon
         self.prev_btn.setIcon(get_icon("previous"))
         self.prev_btn.clicked.connect(lambda: self.main_win.skip(-1))
 
@@ -187,7 +187,7 @@ class MiniPlayerWindow(QWidget):
         if not track:
             self.title_lbl.setText("Kein Song")
             self.artist_lbl.setText("Bereit")
-            from ui import get_cover_pixmap
+            from src.ui.ui import get_cover_pixmap
             self.cover_lbl.setPixmap(get_cover_pixmap("", 48))
             return
 
@@ -209,7 +209,7 @@ class MiniPlayerWindow(QWidget):
         elided_artist = fm_a.elidedText(t_artist, Qt.ElideRight, 150)
         self.artist_lbl.setText(elided_artist)
 
-        from ui import get_cover_pixmap
+        from src.ui.ui import get_cover_pixmap
         self.cover_lbl.setPixmap(get_cover_pixmap(f_path, 48))
 
     def update_position(self, pos_ms: int, dur_ms: int):
@@ -220,7 +220,7 @@ class MiniPlayerWindow(QWidget):
             self.progress_slider.blockSignals(False)
 
     def set_playing(self, is_playing: bool):
-        from ui import get_icon
+        from src.ui.ui import get_icon
         self.play_btn.setIcon(get_icon("pause" if is_playing else "play"))
 
     def _on_seek(self, value: int):

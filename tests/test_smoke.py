@@ -1,9 +1,14 @@
 import json
+import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from database import MusicDatabase
-from metadata import TrackMetadata, safe_name, target_path, save_playlist_json
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.database.database import MusicDatabase
+from src.services.metadata import TrackMetadata, safe_name, target_path, save_playlist_json
 
 
 def run() -> None:
@@ -86,7 +91,7 @@ def run() -> None:
         assert 'DeleteMe' not in database.playlist_names()
 
         # Test find_or_fetch_cover with local cover.jpg
-        from metadata import find_or_fetch_cover
+        from src.services.metadata import find_or_fetch_cover
         cover_dir = root / 'AlbumCoverTest'
         cover_dir.mkdir(parents=True, exist_ok=True)
         local_cover = cover_dir / 'cover.jpg'
@@ -96,7 +101,7 @@ def run() -> None:
         assert found == local_cover
 
         # Test CoverEnricher embedding & tag reading
-        from cover_enricher import CoverEnricher
+        from src.services.cover_enricher import CoverEnricher
         enricher = CoverEnricher()
         from mutagen.id3 import ID3, TIT2, TPE1, TALB
         test_mp3 = root / 'enrich_test.mp3'

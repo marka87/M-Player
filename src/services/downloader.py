@@ -18,8 +18,8 @@ import spotipy
 import yt_dlp
 from spotipy.oauth2 import SpotifyClientCredentials
 
-from database import MusicDatabase
-from metadata import TrackMetadata, target_path, write_id3, save_playlist_json
+from src.database.database import MusicDatabase
+from src.services.metadata import TrackMetadata, target_path, write_id3, save_playlist_json
 
 Progress = Callable[[float, str, str, str], None]
 
@@ -27,7 +27,7 @@ Progress = Callable[[float, str, str, str], None]
 def _ensure_external_tools() -> None:
     """Ensure ffmpeg, ffprobe, and deno are in PATH (checking local bin/ first, then WinGet on Windows)."""
     import sys
-    app_dir = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+    app_dir = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[2]
     local_bin = app_dir / "bin"
     if local_bin.is_dir() and str(local_bin) not in os.environ.get("PATH", ""):
         os.environ["PATH"] = f"{local_bin}{os.pathsep}{os.environ.get('PATH', '')}"
@@ -261,13 +261,13 @@ class MusicDownloader:
                 track.artist = info.get("artist") or info.get("uploader") or track.artist
 
             if self.database.get_setting("auto_metadata", "1") == "1":
-                from metadata import clean_artist_title
+                from src.services.metadata import clean_artist_title
                 track.title, track.artist = clean_artist_title(track.title, track.artist)
             if track.album in ("Unbekanntes Album", "", None):
                 track.album = info.get("album") or track.album
             if track.album in ("Unbekanntes Album", "", None) and self.database.get_setting("auto_metadata", "1") == "1":
                 try:
-                    from metadata import resolve_album_online
+                    from src.services.metadata import resolve_album_online
                     resolved_album, resolved_year = resolve_album_online(track.artist, track.title)
                     if resolved_album:
                         track.album = resolved_album
@@ -281,7 +281,7 @@ class MusicDownloader:
             # High-res cover enrichment during download (iTunes 1000x1000, Deezer, YouTube)
             cover_data = None
             try:
-                from cover_enricher import CoverEnricher
+                from src.services.cover_enricher import CoverEnricher
                 enricher = CoverEnricher(timeout=5)
                 clean_title = re.sub(r'\(.*?\)|\[.*?\]', '', track.title).strip()
                 cover_data = enricher.find_cover(
@@ -294,7 +294,7 @@ class MusicDownloader:
                 pass
 
             if not cover_data and track.cover_url:
-                from metadata import download_cover
+                from src.services.metadata import download_cover
                 cover_data = download_cover(track.cover_url)
 
             destination = target_path(self.library_root, track)

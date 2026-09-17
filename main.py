@@ -1,11 +1,16 @@
 from pathlib import Path
 import sys
 
+# Ensure project root is in sys.path
+_ROOT = Path(__file__).resolve().parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
-from database import MusicDatabase
-from ui import MusicWindow
+from src.database.database import MusicDatabase
+from src.ui.ui import MusicWindow
 
 __version__ = "v1.0.2"
 
