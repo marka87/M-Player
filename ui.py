@@ -1145,7 +1145,7 @@ class MusicWindow(QMainWindow):
 
         self.nav = QListWidget()
         self.nav.setObjectName("sidebarNav")
-        self.nav.setSpacing(6)
+        self.nav.setSpacing(0)
         self.nav.setIconSize(QSize(20, 20))
         self.nav.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -1162,6 +1162,10 @@ class MusicWindow(QMainWindow):
             item.setSizeHint(QSize(200, 48))
             self.nav.addItem(item)
         self.nav.currentRowChanged.connect(self.show_page)
+
+        # Ensure all nav items fit without scrolling (replaces QAbstractScrollArea default 192px limit)
+        nav_h = sum(self.nav.sizeHintForRow(i) for i in range(self.nav.count())) + (self.nav.count() * 6) + 16
+        self.nav.setFixedHeight(nav_h)
         sidebar_layout.addWidget(self.nav, 0)
         sidebar_layout.addStretch(1)
 
