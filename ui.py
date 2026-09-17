@@ -15,7 +15,7 @@ from PySide6.QtGui import (QAction, QColor, QDesktopServices, QFont, QFontMetric
                            QKeySequence, QPainter, QPainterPath, QPen, QPixmap, QShortcut)
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog, QFileDialog,
-                             QFrame, QHBoxLayout, QHeaderView, QInputDialog,
+                             QFrame, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog,
                              QLabel, QLineEdit, QListWidget, QListWidgetItem,
                              QMainWindow, QMenu, QMessageBox, QProgressBar,
                              QPushButton, QScrollArea, QSizePolicy, QSlider, QStackedWidget, QSystemTrayIcon,
@@ -1125,9 +1125,13 @@ class MusicWindow(QMainWindow):
         self.top_refresh_btn.setToolTip("Musikordner vollständig scannen & synchronisieren (F5)")
         header.addWidget(self.top_refresh_btn)
 
-        # Global F5 shortcut
+        # Global shortcuts
         self.f5_shortcut = QShortcut(QKeySequence("F5"), self)
         self.f5_shortcut.activated.connect(self.run_sync_library)
+        self.i_shortcut = QShortcut(QKeySequence("I"), self)
+        self.i_shortcut.activated.connect(self._toggle_details_panel)
+        self.esc_shortcut = QShortcut(QKeySequence(Qt.Key_Escape), self)
+        self.esc_shortcut.activated.connect(lambda: self.details_panel.hide() if self.details_panel.isVisible() else None)
 
         header.addWidget(self._button("Einstellungen", lambda: self.show_page(6), icon=get_icon("settings"), icon_size=QSize(16, 16)))
         main_layout.addLayout(header)
@@ -1345,36 +1349,47 @@ class MusicWindow(QMainWindow):
     def _build_details_panel(self) -> QWidget:
         panel = QFrame()
         panel.setObjectName("detailsPanel")
-        panel.setFixedWidth(290)
+        panel.setFixedWidth(280)
         
         main_layout = QVBoxLayout(panel)
         main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
         
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setStyleSheet("background: #171A1F;")
+        # Fixed Header (Always visible at top, never scrolls away)
+        top_hdr = QFrame()
+        top_hdr.setObjectName("detailsHeader")
+        top_hdr_lay = QHBoxLayout(top_hdr)
+        top_hdr_lay.setContentsMargins(14, 8, 10, 8)
         
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
+        hdr_title = QLabel("Song-Details")
+        hdr_title.setStyleSheet("font-size: 13px; font-weight: 700; color: #F4F4F4;")
+        top_hdr_lay.addWidget(hdr_title)
+        top_hdr_lay.addStretch()
 
-        # Top Header (Shrinked)
-        hdr = QHBoxLayout()
         close_btn = QPushButton("✕")
         close_btn.setFixedSize(24, 24)
         close_btn.setObjectName("closeBtn")
+        close_btn.setToolTip("Panel schließen (Esc)")
         close_btn.clicked.connect(lambda: self.details_panel.hide())
-        hdr.addStretch()
-        hdr.addWidget(close_btn)
-        layout.addLayout(hdr)
+        top_hdr_lay.addWidget(close_btn)
+        main_layout.addWidget(top_hdr)
 
-        # Large Cover
+        self.details_scroll = QScrollArea()
+        self.details_scroll.setWidgetResizable(True)
+        self.details_scroll.setFrameShape(QFrame.NoFrame)
+        self.details_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.details_scroll.setStyleSheet("background: #171A1F; border: none;")
+        
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(12, 8, 12, 12)
+        layout.setSpacing(8)
+
+        # Large Cover (120x120)
         cover_container = QHBoxLayout()
         self.detail_cover = QLabel()
-        self.detail_cover.setFixedSize(140, 140)
-        self.detail_cover.setPixmap(get_cover_pixmap("", 140))
+        self.detail_cover.setFixedSize(120, 120)
+        self.detail_cover.setPixmap(get_cover_pixmap("", 120))
         self.detail_cover.setAlignment(Qt.AlignCenter)
         cover_container.setAlignment(Qt.AlignCenter)
         cover_container.addWidget(self.detail_cover)
@@ -1383,10 +1398,10 @@ class MusicWindow(QMainWindow):
         # Title & Artist
         self.detail_title = QLabel("Kein Song ausgewählt")
         self.detail_title.setWordWrap(True)
-        self.detail_title.setStyleSheet("font-size: 14px; font-weight: 700; color: #F4F4F4;")
+        self.detail_title.setStyleSheet("font-size: 13px; font-weight: 700; color: #F4F4F4;")
         self.detail_artist = QLabel("")
         self.detail_artist.setWordWrap(True)
-        self.detail_artist.setStyleSheet("font-size: 13px; font-weight: 600; color: #3DDC63;")
+        self.detail_artist.setStyleSheet("font-size: 12px; font-weight: 600; color: #3DDC63;")
         layout.addWidget(self.detail_title)
         layout.addWidget(self.detail_artist)
 
@@ -1398,7 +1413,7 @@ class MusicWindow(QMainWindow):
 
         # Tab switcher: Info vs Ähnliche Songs
         tab_row = QHBoxLayout()
-        tab_row.setContentsMargins(0, 4, 0, 4)
+        tab_row.setContentsMargins(0, 2, 0, 2)
         tab_row.setSpacing(4)
         self.detail_tab_info = QPushButton("Info")
         self.detail_tab_info.setObjectName("chipBtn")
@@ -1421,14 +1436,14 @@ class MusicWindow(QMainWindow):
         info_page = QWidget()
         info_layout = QVBoxLayout(info_page)
         info_layout.setContentsMargins(0, 0, 0, 0)
-        info_layout.setSpacing(8)
+        info_layout.setSpacing(6)
 
         # Metadata box
         meta_frame = QFrame()
         meta_frame.setObjectName("metaBox")
         meta_layout = QVBoxLayout(meta_frame)
-        meta_layout.setContentsMargins(10, 10, 10, 10)
-        meta_layout.setSpacing(6)
+        meta_layout.setContentsMargins(10, 8, 10, 8)
+        meta_layout.setSpacing(4)
 
         self.detail_duration = QLabel("Dauer: --:--")
         self.detail_size = QLabel("Größe: --")
@@ -1439,22 +1454,31 @@ class MusicWindow(QMainWindow):
 
         for lbl in (self.detail_duration, self.detail_size, self.detail_bitrate, self.detail_year, self.detail_genre, self.detail_plays):
             lbl.setObjectName("secondary")
-            lbl.setStyleSheet("font-size: 12px;")
+            lbl.setStyleSheet("font-size: 11px;")
             meta_layout.addWidget(lbl)
 
         info_layout.addWidget(meta_frame)
 
-        # Action buttons
+        # Action buttons: Clean & compact layout
         self.detail_play_btn = self._button("Abspielen", self._on_detail_play, True, icon=get_icon("play"), icon_size=QSize(16, 16))
-        self.detail_fav_btn = self._button("Zu Favoriten", self._on_detail_fav, icon=get_icon("heart"), icon_size=QSize(16, 16))
-        self.detail_clean_btn = self._button("Tags bereinigen", self._on_detail_clean, icon=get_icon("zap"), icon_size=QSize(16, 16))
-        self.detail_clean_btn.setToolTip("Auto-Clean ID3 Tags (YouTube-Müll entfernen, Artist/Titel trennen)")
-        self.detail_cover_btn = self._button("Cover aktualisieren", self._on_detail_update_cover, icon=get_icon("covers"), icon_size=QSize(16, 16))
-        self.detail_folder_btn = self._button("Im Explorer anzeigen", self._on_detail_open_folder, icon=get_icon("folder"), icon_size=QSize(16, 16))
-        self.detail_del_btn = self._button("Löschen", self._on_detail_delete, obj_name="danger", icon=get_icon("trash"), icon_size=QSize(16, 16))
+        info_layout.addWidget(self.detail_play_btn)
 
-        for btn in (self.detail_play_btn, self.detail_fav_btn, self.detail_clean_btn, self.detail_cover_btn, self.detail_folder_btn, self.detail_del_btn):
-            info_layout.addWidget(btn)
+        act_grid = QGridLayout()
+        act_grid.setSpacing(6)
+        self.detail_fav_btn = self._button("Favorit", self._on_detail_fav, icon=get_icon("heart"), icon_size=QSize(14, 14))
+        self.detail_clean_btn = self._button("Clean", self._on_detail_clean, icon=get_icon("zap"), icon_size=QSize(14, 14))
+        self.detail_clean_btn.setToolTip("Auto-Clean ID3 Tags (YouTube-Müll entfernen)")
+        self.detail_cover_btn = self._button("Cover", self._on_detail_update_cover, icon=get_icon("covers"), icon_size=QSize(14, 14))
+        self.detail_folder_btn = self._button("Ordner", self._on_detail_open_folder, icon=get_icon("folder"), icon_size=QSize(14, 14))
+
+        act_grid.addWidget(self.detail_fav_btn, 0, 0)
+        act_grid.addWidget(self.detail_clean_btn, 0, 1)
+        act_grid.addWidget(self.detail_cover_btn, 1, 0)
+        act_grid.addWidget(self.detail_folder_btn, 1, 1)
+        info_layout.addLayout(act_grid)
+
+        self.detail_del_btn = self._button("Löschen", self._on_detail_delete, obj_name="danger", icon=get_icon("trash"), icon_size=QSize(14, 14))
+        info_layout.addWidget(self.detail_del_btn)
 
         self.detail_stack.addWidget(info_page)
 
@@ -1481,12 +1505,12 @@ class MusicWindow(QMainWindow):
         self.selected_detail_track = None
         self._last_rec_key = ""
         
-        scroll.setWidget(content)
-        main_layout.addWidget(scroll)
+        self.details_scroll.setWidget(content)
+        main_layout.addWidget(self.details_scroll, 1)
         
         return panel
 
-    def show_track_details(self, track):
+    def show_track_details(self, track, force_open: bool = True):
         if not track:
             return
         self.selected_detail_track = track
@@ -1524,12 +1548,27 @@ class MusicWindow(QMainWindow):
         self.detail_genre.setText(f"Genre: {genre}" if genre else "Genre: --")
         self.detail_plays.setText(f"Gespielt: {plays} mal")
 
-        self.detail_cover.setPixmap(get_cover_pixmap(fp, 140))
-        self.detail_fav_btn.setText("Aus Favoriten" if fav else "Zu Favoriten")
+        self.detail_cover.setPixmap(get_cover_pixmap(fp, 120))
+        self.detail_fav_btn.setText("Aus Favoriten" if fav else "Favorit")
         self.detail_fav_btn.setIcon(get_icon("heart-filled" if fav else "heart"))
-        self.details_panel.show()
+        if force_open:
+            self.details_panel.show()
+        if hasattr(self, "details_scroll"):
+            self.details_scroll.verticalScrollBar().setValue(0)
         if hasattr(self, "detail_stack") and self.detail_stack.currentIndex() == 1:
             self._load_recommendations_for_track(track)
+
+    def _toggle_details_panel(self):
+        if self.details_panel.isVisible():
+            self.details_panel.hide()
+        else:
+            target = getattr(self, "current_track", None) or getattr(self, "selected_detail_track", None)
+            if target:
+                self.show_track_details(target, force_open=True)
+            else:
+                self.details_panel.show()
+                if hasattr(self, "details_scroll"):
+                    self.details_scroll.verticalScrollBar().setValue(0)
 
     def _switch_detail_tab(self, idx: int):
         self.detail_stack.setCurrentIndex(idx)
@@ -2218,7 +2257,7 @@ class MusicWindow(QMainWindow):
         table.setContextMenuPolicy(Qt.CustomContextMenu)
         table.customContextMenuRequested.connect(lambda p, t=table, m=model: self.context_menu(t, m, p))
         table.doubleClicked.connect(lambda idx, m=model: self.play(m.rows[idx.row()], idx.row(), m.rows) if 0 <= idx.row() < len(m.rows) else None)
-        table.clicked.connect(lambda idx, m=model: self.show_track_details(m.rows[idx.row()]) if 0 <= idx.row() < len(m.rows) else None)
+        table.clicked.connect(lambda idx, m=model: self.show_track_details(m.rows[idx.row()], force_open=self.details_panel.isVisible()) if 0 <= idx.row() < len(m.rows) else None)
 
         # Grid View
         grid = QListWidget()
@@ -2230,7 +2269,7 @@ class MusicWindow(QMainWindow):
         grid.setViewportMargins(8, 8, 8, 8)
         grid.setItemDelegate(GridCardDelegate(grid))
         grid.itemDoubleClicked.connect(lambda item, m=model: self._on_grid_double_click(item, m))
-        grid.itemClicked.connect(lambda item: self.show_track_details(item.data(Qt.UserRole)))
+        grid.itemClicked.connect(lambda item: self.show_track_details(item.data(Qt.UserRole), force_open=self.details_panel.isVisible()))
 
         grid.setAcceptDrops(True)
         grid.dragEnterEvent = self.dragEnterEvent
@@ -2619,7 +2658,7 @@ class MusicWindow(QMainWindow):
         self.pl_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.pl_table.customContextMenuRequested.connect(lambda p: self.context_menu(self.pl_table, self.pl_track_model, p))
         self.pl_table.doubleClicked.connect(lambda idx: self.play(self.pl_track_model.rows[idx.row()], idx.row(), self.pl_track_model.rows))
-        self.pl_table.clicked.connect(lambda idx: self.show_track_details(self.pl_track_model.rows[idx.row()]))
+        self.pl_table.clicked.connect(lambda idx: self.show_track_details(self.pl_track_model.rows[idx.row()], force_open=self.details_panel.isVisible()))
         dt_layout.addWidget(self.pl_table, 1)
 
         self.pl_stack.addWidget(page_detail)
@@ -2745,6 +2784,9 @@ class MusicWindow(QMainWindow):
         self.bar_cover = QLabel()
         self.bar_cover.setFixedSize(56, 56)
         self.bar_cover.setPixmap(get_cover_pixmap("", 56))
+        self.bar_cover.setCursor(Qt.PointingHandCursor)
+        self.bar_cover.setToolTip("Song-Details ein-/ausblenden (I)")
+        self.bar_cover.mousePressEvent = lambda _: self._toggle_details_panel()
         left.addWidget(self.bar_cover)
 
         meta_box = QVBoxLayout()
@@ -2841,9 +2883,13 @@ class MusicWindow(QMainWindow):
         self.vol_slider.setFixedWidth(110)
         self.vol_slider.valueChanged.connect(self._on_volume_changed)
 
+        self.details_toggle_btn = self._button("", self._toggle_details_panel, obj_name="playerBtn", icon=get_icon("info"), icon_size=QSize(18, 18))
+        self.details_toggle_btn.setToolTip("Song-Details ein-/ausblenden [I]")
+
         self.mini_btn = self._button("", self.toggle_mini_player, obj_name="playerBtn", icon=get_icon("headphones"), icon_size=QSize(18, 18))
         self.mini_btn.setToolTip("Mini-Player (Immer im Vordergrund) [Ctrl+M]")
 
+        right.addWidget(self.details_toggle_btn)
         right.addWidget(self.vol_btn)
         right.addWidget(self.vol_slider)
         right.addWidget(self.mini_btn)

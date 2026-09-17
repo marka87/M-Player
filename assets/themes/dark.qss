@@ -489,6 +489,32 @@ QFrame#detailsPanel {
     max-width: 280px;
 }
 
+QFrame#detailsHeader {
+    background-color: #171A1F;
+    border-bottom: 1px solid #222730;
+    border-top-left-radius: 14px;
+    border-top-right-radius: 14px;
+}
+
+QPushButton#closeBtn {
+    background-color: transparent;
+    color: #8C93A0;
+    border: none;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+QPushButton#closeBtn:hover {
+    background-color: #262B34;
+    color: #F4F4F4;
+}
+
+QPushButton#closeBtn:pressed {
+    background-color: #1E232B;
+    color: #FFFFFF;
+}
+
 QListWidget#similarList {
     background-color: transparent;
     border: none;
