@@ -8,13 +8,12 @@ und dieses Projekt hält sich an [Semantic Versioning](https://semver.org/lang/d
 ## [1.0.3] - 2026-09-17
 
 ### Added
-- 
-
-### Changed
-- 
+- **High-Speed Mini-Thumbnails & Disk Caching**: Extrem schnelles Rendern und Scrollen in der Bibliothek durch vorberechnete 48x48 und 130x130 JPEG-Thumbnails auf der Festplatte. Kein zeitaufwendiges MP3-ID3-APIC-Parsing mehr im UI-Thread.
+- **Background Preload Task**: Neuer Hintergrund-Worker (`ThumbnailPreloadTask`), der nach Datei-Imports und Library-Syncs Thumbnails im Leerlauf vorberechnet.
+- **Automatische Versionierung**: `bump.bat` und `scripts/bump_version.py` für automatisierte SemVer-Releases und Changelog-Generierung.
 
 ### Fixed
-- 
+- **CI/CD AppImage Build**: Korrektur der Download-URL für `appimagetool` auf das offizielle Continuous-Release.
 
 ## [1.0.2] - 2026-09-17
 

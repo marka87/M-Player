@@ -355,3 +355,103 @@ class CoverEnricher:
 
         return stats
 
+
+def get_thumbnail_cache_dir(size: int = 64) -> Path:
+    """Return cache directory path for given thumbnail size."""
+    import tempfile
+    cache_dir = Path(tempfile.gettempdir()) / "mplayer_thumbs" / f"{size}x{size}"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def extract_raw_cover(file_path: Path | str) -> bytes | None:
+    """Extract raw cover image bytes from an MP3 file or folder cover.jpg without Qt dependencies."""
+    p = Path(file_path)
+    if not p.exists():
+        return None
+
+    if p.is_file():
+        if p.suffix.lower() == ".mp3":
+            try:
+                from mutagen.id3 import ID3
+                tags = ID3(p)
+                for apic in tags.getall("APIC"):
+                    if apic.data:
+                        return apic.data
+            except Exception:
+                pass
+            parent_cov = p.parent / "cover.jpg"
+            if parent_cov.is_file():
+                try:
+                    return parent_cov.read_bytes()
+                except OSError:
+                    pass
+        elif p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
+            try:
+                return p.read_bytes()
+            except OSError:
+                pass
+    elif p.is_dir():
+        cov = p / "cover.jpg"
+        if cov.is_file():
+            try:
+                return cov.read_bytes()
+            except OSError:
+                pass
+    return None
+
+
+def get_or_create_thumbnail(cover_source: Path | str, size: int = 64) -> Path | None:
+    """
+    Get or pre-generate a resized, highly compressed thumbnail image on disk.
+    Uses MD5(file_path + mtime) to ensure cache invalidation when files change.
+    Returns path to cached JPEG thumbnail, or None if no cover exists.
+    """
+    if not cover_source:
+        return None
+
+    p = Path(cover_source)
+    if not p.exists():
+        return None
+
+    import hashlib
+    try:
+        mtime = int(p.stat().st_mtime)
+    except OSError:
+        mtime = 0
+
+    key = f"{p.resolve()}_{mtime}_{size}"
+    h = hashlib.md5(key.encode("utf-8", errors="replace")).hexdigest()
+    out_dir = get_thumbnail_cache_dir(size)
+    thumb_path = out_dir / f"{h}.jpg"
+
+    if thumb_path.is_file() and thumb_path.stat().st_size > 0:
+        return thumb_path
+
+    # Extract raw cover bytes
+    raw_data = extract_raw_cover(p)
+    if not raw_data:
+        return None
+
+    try:
+        from PySide6.QtGui import QImage
+        from PySide6.QtCore import Qt
+
+        img = QImage()
+        if not img.loadFromData(raw_data):
+            return None
+
+        scaled = img.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        # Crop square if aspect ratio is not 1:1
+        if scaled.width() != size or scaled.height() != size:
+            x = (scaled.width() - size) // 2
+            y = (scaled.height() - size) // 2
+            scaled = scaled.copy(x, y, size, size)
+
+        scaled.save(str(thumb_path), "JPG", quality=85)
+        return thumb_path if thumb_path.exists() else None
+    except Exception as err:
+        logger.debug("Failed creating thumbnail for %s: %s", cover_source, err)
+        return None
+
+

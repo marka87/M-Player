@@ -184,28 +184,34 @@ def get_cover_pixmap(cover_source: str, size: int = 48) -> QPixmap:
             except Exception:
                 pass
         else:
-            p = Path(cover_source)
-            if p.is_file():
-                if p.suffix.lower() == ".mp3":
-                    # 1. Embedded ID3 APIC frame (individual track cover art)
-                    try:
-                        from mutagen.id3 import ID3
-                        tags = ID3(p)
-                        for apic in tags.getall("APIC"):
-                            if apic.data:
-                                pix.loadFromData(apic.data)
-                                break
-                    except Exception:
-                        pass
-                    # 2. Folder cover.jpg fallback (for complete albums)
-                    if pix.isNull() and (p.parent / "cover.jpg").is_file():
-                        pix.load(str(p.parent / "cover.jpg"))
-                else:
-                    pix.load(str(p))
-            elif p.is_dir() and (p / "cover.jpg").exists():
-                pix.load(str(p / "cover.jpg"))
-            elif (p.parent / "cover.jpg").exists():
-                pix.load(str(p.parent / "cover.jpg"))
+            # Check fast precomputed thumbnail disk cache first
+            from src.services.cover_enricher import get_or_create_thumbnail
+            thumb_path = get_or_create_thumbnail(cover_source, size)
+            if thumb_path and thumb_path.is_file():
+                pix.load(str(thumb_path))
+            else:
+                p = Path(cover_source)
+                if p.is_file():
+                    if p.suffix.lower() == ".mp3":
+                        # 1. Embedded ID3 APIC frame (individual track cover art)
+                        try:
+                            from mutagen.id3 import ID3
+                            tags = ID3(p)
+                            for apic in tags.getall("APIC"):
+                                if apic.data:
+                                    pix.loadFromData(apic.data)
+                                    break
+                        except Exception:
+                            pass
+                        # 2. Folder cover.jpg fallback (for complete albums)
+                        if pix.isNull() and (p.parent / "cover.jpg").is_file():
+                            pix.load(str(p.parent / "cover.jpg"))
+                    else:
+                        pix.load(str(p))
+                elif p.is_dir() and (p / "cover.jpg").exists():
+                    pix.load(str(p / "cover.jpg"))
+                elif (p.parent / "cover.jpg").exists():
+                    pix.load(str(p.parent / "cover.jpg"))
 
     if pix.isNull():
         pix = QPixmap(size, size)
@@ -720,6 +726,26 @@ class CoverFinderTask(QRunnable):
             self.signals.done.emit(found)
         except Exception as exc:
             self.signals.error.emit(str(exc))
+
+
+class ThumbnailPreloadTask(QRunnable):
+    """Background task that precomputes 48x48 and 130x130 thumbnails without blocking the UI."""
+    def __init__(self, db: MusicDatabase):
+        super().__init__()
+        self.db = db
+
+    def run(self):
+        try:
+            from src.services.cover_enricher import get_or_create_thumbnail
+            tracks = self.db.tracks()
+            for t in tracks:
+                fp = t["file_path"] if t and "file_path" in t.keys() else ""
+                if fp:
+                    # Pre-cache small list thumbnail and grid card thumbnail
+                    get_or_create_thumbnail(fp, 48)
+                    get_or_create_thumbnail(fp, 130)
+        except Exception:
+            pass
 
 
 
@@ -1442,6 +1468,7 @@ class MusicWindow(QMainWindow):
 
         self.refresh_library()
         self.refresh_dashboard()
+        self.start_task(ThumbnailPreloadTask(self.db))
         self.notify("Import abgeschlossen", f"{count} Song(s) erfolgreich zur Bibliothek hinzugefügt.")
         return count
 
@@ -3633,6 +3660,7 @@ class MusicWindow(QMainWindow):
             added, removed = res
             self.refresh_library()
             self.refresh_dashboard()
+            self.start_task(ThumbnailPreloadTask(self.db))
             QMessageBox.information(self, "Aktualisierung abgeschlossen",
                                     f"Bibliothek erfolgreich synchronisiert:\n+ {added} hinzugefügt\n- {removed} entfernt.")
 
