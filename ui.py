@@ -1129,10 +1129,6 @@ class MusicWindow(QMainWindow):
         self.top_refresh_btn.setToolTip("Musikordner vollständig scannen & synchronisieren (F5)")
         header.addWidget(self.top_refresh_btn)
 
-        self.top_details_btn = self._button("Song-Details", self._toggle_details_panel, icon=get_icon("info"), icon_size=QSize(16, 16))
-        self.top_details_btn.setToolTip("Song-Details ein-/ausblenden [I]")
-        header.addWidget(self.top_details_btn)
-
         # Global shortcuts
         self.f5_shortcut = QShortcut(QKeySequence("F5"), self)
         self.f5_shortcut.activated.connect(self.run_sync_library)
@@ -1181,9 +1177,13 @@ class MusicWindow(QMainWindow):
         sidebar_layout.addWidget(self.nav, 0)
         sidebar_layout.addStretch(1)
 
-        # Now Playing Mini-Card / Stats Fallback Widget
-        self.sidebar_mini_card = self._build_sidebar_mini_card()
-        sidebar_layout.addWidget(self.sidebar_mini_card)
+        # Permanent Library Stats Label
+        self.sidebar_stats_lbl = QLabel("Bibliothek wird geladen…")
+        self.sidebar_stats_lbl.setObjectName("secondary")
+        self.sidebar_stats_lbl.setAlignment(Qt.AlignCenter)
+        self.sidebar_stats_lbl.setStyleSheet("font-size: 11px; padding: 6px 8px;")
+        self.sidebar_stats_lbl.setWordWrap(True)
+        sidebar_layout.addWidget(self.sidebar_stats_lbl)
 
         try:
             from main import __version__
@@ -1237,122 +1237,10 @@ class MusicWindow(QMainWindow):
         if hasattr(self, "fav_stats_lbl"):
             fav_count = len(self.fav_model.rows) if hasattr(self, "fav_model") else 0
             self.fav_stats_lbl.setText(f"{fav_count} Favoriten")
-        self._update_sidebar_mini_card(getattr(self, "current_track", None))
+        if hasattr(self, "sidebar_stats_lbl"):
+            self.sidebar_stats_lbl.setText(f"{stats['songs']} Songs • {size_text}")
 
-    def _build_sidebar_mini_card(self) -> QWidget:
-        card = QFrame()
-        card.setObjectName("sidebarMiniCard")
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(8, 8, 8, 8)
-        card_layout.setSpacing(6)
 
-        # 1. Track Active Widget
-        self.sb_track_box = QWidget()
-        tb_layout = QHBoxLayout(self.sb_track_box)
-        tb_layout.setContentsMargins(0, 0, 0, 0)
-        tb_layout.setSpacing(8)
-
-        self.sb_cover = QLabel()
-        self.sb_cover.setFixedSize(48, 48)
-        self.sb_cover.setPixmap(get_cover_pixmap("", 48))
-        self.sb_cover.setScaledContents(True)
-
-        meta_layout = QVBoxLayout()
-        meta_layout.setContentsMargins(0, 0, 0, 0)
-        meta_layout.setSpacing(2)
-        meta_layout.setAlignment(Qt.AlignVCenter)
-
-        self.sb_title = QLabel("Kein Song")
-        self.sb_title.setStyleSheet("font-weight: 700; font-size: 12px;")
-        self.sb_title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-
-        self.sb_artist = QLabel("Bereit")
-        self.sb_artist.setObjectName("secondary")
-        self.sb_artist.setStyleSheet("font-size: 11px;")
-        self.sb_artist.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-
-        meta_layout.addWidget(self.sb_title)
-        meta_layout.addWidget(self.sb_artist)
-
-        self.sb_fav_btn = self._button("", self._toggle_current_fav, obj_name="playerBtn", icon=get_icon("heart"), icon_size=QSize(16, 16))
-        self.sb_fav_btn.setFixedSize(28, 28)
-        self.sb_fav_btn.setToolTip("Zu Favoriten hinzufügen")
-
-        tb_layout.addWidget(self.sb_cover)
-        tb_layout.addLayout(meta_layout, 1)
-        tb_layout.addWidget(self.sb_fav_btn)
-
-        # 2. Idle Fallback Stats Widget
-        self.sb_stats_box = QWidget()
-        sb_layout = QHBoxLayout(self.sb_stats_box)
-        sb_layout.setContentsMargins(4, 4, 4, 4)
-        sb_layout.setSpacing(8)
-
-        stats_icon = QLabel()
-        stats_icon.setPixmap(get_icon("library").pixmap(24, 24))
-        stats_icon.setFixedSize(24, 24)
-
-        stats_info = QVBoxLayout()
-        stats_info.setContentsMargins(0, 0, 0, 0)
-        stats_info.setSpacing(1)
-        stats_info.setAlignment(Qt.AlignVCenter)
-
-        self.sb_stats_title = QLabel("Bibliothek")
-        self.sb_stats_title.setStyleSheet("font-weight: 600; font-size: 11px;")
-        self.sb_stats_desc = QLabel("0 Songs · 0 Alben")
-        self.sb_stats_desc.setObjectName("secondary")
-        self.sb_stats_desc.setStyleSheet("font-size: 10px;")
-
-        stats_info.addWidget(self.sb_stats_title)
-        stats_info.addWidget(self.sb_stats_desc)
-
-        sb_layout.addWidget(stats_icon)
-        sb_layout.addLayout(stats_info, 1)
-
-        card_layout.addWidget(self.sb_track_box)
-        card_layout.addWidget(self.sb_stats_box)
-
-        card.mousePressEvent = self._on_sidebar_mini_card_clicked
-
-        self._update_sidebar_mini_card(None)
-        return card
-
-    def _on_sidebar_mini_card_clicked(self, event):
-        if getattr(self, "current_track", None):
-            self.show_track_details(self.current_track)
-        else:
-            self.show_page(2)
-
-    def _update_sidebar_mini_card(self, track=None):
-        if not hasattr(self, "sb_track_box") or not hasattr(self, "sb_stats_box"):
-            return
-        if track:
-            self.sb_stats_box.hide()
-            self.sb_track_box.show()
-            t_title = track["title"] if hasattr(track, "keys") else (track.get("title", "") if isinstance(track, dict) else getattr(track, "title", ""))
-            t_artist = track["artist"] if hasattr(track, "keys") else (track.get("artist", "") if isinstance(track, dict) else getattr(track, "artist", ""))
-            f_path = track["file_path"] if hasattr(track, "keys") else (track.get("file_path", "") if isinstance(track, dict) else getattr(track, "file_path", ""))
-            fav = track["favorite"] if hasattr(track, "keys") and "favorite" in track.keys() else (track.get("favorite", 0) if isinstance(track, dict) else getattr(track, "favorite", 0))
-
-            if not t_title and f_path:
-                t_title = Path(f_path).stem
-            if not t_artist:
-                t_artist = "Unbekannter Interpret"
-
-            self.sb_title.setText(t_title or "Unbekannter Titel")
-            self.sb_artist.setText(t_artist)
-            self.sb_cover.setPixmap(get_cover_pixmap(f_path, 48))
-            self.sb_fav_btn.setIcon(get_icon("heart-filled" if fav else "heart"))
-        else:
-            self.sb_track_box.hide()
-            self.sb_stats_box.show()
-            try:
-                st = self.db.stats()
-                songs = st["songs"] if st else 0
-                albums = st["albums"] if st else 0
-                self.sb_stats_desc.setText(f"{songs} Songs · {albums} Alben")
-            except Exception:
-                self.sb_stats_desc.setText("Bereit")
 
     def _build_details_panel(self) -> QWidget:
         panel = QFrame()
@@ -1751,7 +1639,6 @@ class MusicWindow(QMainWindow):
 
             self.now_title.setText(f"⚡ [Vorhören] {t_title}")
             self.now_audio_info.setText("Direct Stream")
-            self._update_sidebar_mini_card(virtual_track)
             self._load_recommendations_for_track(virtual_track)
 
         def on_stream_err(err):
@@ -3280,9 +3167,6 @@ class MusicWindow(QMainWindow):
             if hasattr(self, "lib_content_stack"):
                 self.lib_content_stack.setCurrentIndex(1 if len(all_tracks) == 0 else 0)
 
-        if not getattr(self, "current_track", None):
-            self._update_sidebar_mini_card(None)
-
     def _populate_grid(self, grid: QListWidget, tracks: list):
         grid.clear()
         for t in tracks:
@@ -3421,7 +3305,6 @@ class MusicWindow(QMainWindow):
         if hasattr(self, "bar_fav_btn"):
             self.bar_fav_btn.setIcon(get_icon("heart-filled" if fav else "heart"))
 
-        self._update_sidebar_mini_card(track)
 
         if coll and coll not in ("Einzeltitel", "Single") and hasattr(self, "bar_pl_badge"):
             self.bar_pl_badge.setText(coll)
@@ -3461,9 +3344,6 @@ class MusicWindow(QMainWindow):
                 is_fav = bool(self.current_track["favorite"])
                 if hasattr(self, "bar_fav_btn"):
                     self.bar_fav_btn.setIcon(get_icon("heart-filled" if is_fav else "heart"))
-                if hasattr(self, "sb_fav_btn"):
-                    self.sb_fav_btn.setIcon(get_icon("heart-filled" if is_fav else "heart"))
-                self._update_sidebar_mini_card(self.current_track)
             self.refresh_library()
             self.refresh_dashboard()
 

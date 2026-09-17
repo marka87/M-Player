@@ -57,22 +57,6 @@ QListWidget#sidebarNav::item:selected {
     border-left: 4px solid #3DDC63;
 }
 
-QFrame#sidebarMiniCard {
-    background-color: #1A1F26;
-    border: 1px solid #262B34;
-    border-radius: 10px;
-    padding: 2px;
-}
-QFrame#sidebarMiniCard:hover {
-    background-color: #222933;
-    border-color: #3DDC63;
-}
-QFrame#sidebarMiniCard QLabel {
-    color: #F4F4F4;
-}
-QFrame#sidebarMiniCard QLabel#secondary {
-    color: #A0A6AD;
-}
 
 /* =========================================================
    2. CHECKBOXES (18x18px, rounded 4px, dark bg #2a2e38, #4b5563 border, #1db954 checked)
@@ -173,10 +157,10 @@ QPushButton#toolbarBtn {
     background-color: #1E232A;
     border: 1px solid #333842;
     border-radius: 8px;
-    min-height: 36px;
-    padding: 6px 14px;
+    min-height: 32px;
+    padding: 4px 8px;
     color: #E0E0E0;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
 }
 

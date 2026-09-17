@@ -171,16 +171,9 @@ def test_full_ui():
         # Check Context Menu & Explorer Reveal
         win._show_in_explorer(drop_file)
 
-        # Check Sidebar Mini-Card (idle fallback state)
-        assert hasattr(win, "sidebar_mini_card")
-        assert win.sb_stats_box.isVisible()
-        assert not win.sb_track_box.isVisible()
-
-        # Play a song and verify Sidebar Mini-Card switches to track state
-        win.play(win.lib_model.rows[0], 0, win.lib_model.rows)
-        assert win.sb_track_box.isVisible()
-        assert not win.sb_stats_box.isVisible()
-        assert win.sb_title.text() != ""
+        # Check Sidebar Stats Label (replaced mini-card)
+        assert hasattr(win, "sidebar_stats_lbl")
+        assert win.sidebar_stats_lbl.isVisible()
 
         # Test GridCardDelegate painting directly with QPainter (must not raise exceptions)
         from PySide6.QtGui import QPainter, QPixmap
