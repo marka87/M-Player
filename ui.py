@@ -1575,7 +1575,7 @@ class MusicWindow(QMainWindow):
         try:
             from main import __version__
         except ImportError:
-            __version__ = "v1.0.1"
+            __version__ = "v1.0.2"
 
         self.version_lbl = QLabel(__version__)
         self.version_lbl.setStyleSheet("color: #6a7282; font-size: 11px; padding-top: 4px;")
@@ -3268,7 +3268,7 @@ class MusicWindow(QMainWindow):
         try:
             from main import __version__
         except ImportError:
-            __version__ = "v1.0.1"
+            __version__ = "v1.0.2"
 
         footer_lbl = QLabel(f"M-Player {__version__} • Made by marka87")
         footer_lbl.setObjectName("secondary")

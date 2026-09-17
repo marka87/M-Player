@@ -21,7 +21,7 @@ if hasattr(sys.stderr, "reconfigure"):
 BASE_DIR = Path(__file__).resolve().parent
 DIST_DIR = BASE_DIR / "dist"
 BUILD_DIR = BASE_DIR / "build"
-VERSION = "v1.0.1"
+VERSION = "v1.0.2"
 
 IS_WINDOWS = sys.platform == "win32"
 EXE_NAME = "M-Player.exe" if IS_WINDOWS else "M-Player"

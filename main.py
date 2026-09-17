@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QApplication
 from database import MusicDatabase
 from ui import MusicWindow
 
-__version__ = "v1.0.1"
+__version__ = "v1.0.2"
 
 if __name__ == "__main__":
     if sys.platform == "win32":
