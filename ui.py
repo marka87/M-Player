@@ -9,7 +9,7 @@ import shutil
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import (QAbstractTableModel, QModelIndex, QObject, QRunnable,
+from PySide6.QtCore import (QAbstractTableModel, QByteArray, QModelIndex, QObject, QRunnable,
                             QSize, Qt, QThreadPool, QTimer, QUrl, Signal)
 from PySide6.QtGui import (QAction, QColor, QDesktopServices, QFont, QFontMetrics, QIcon,
                            QKeySequence, QPainter, QPainterPath, QPen, QPixmap, QShortcut)
@@ -867,6 +867,8 @@ class MusicWindow(QMainWindow):
         self.player.errorOccurred.connect(self._on_player_error)
 
         self._active_tasks = set()
+        self._prev_page = 2
+        self._restoring_headers = False
 
         self.setWindowTitle("M-Player — Offline Music Manager")
         ico_file = ICON_DIR.parent / "icon.ico"
@@ -1125,15 +1127,19 @@ class MusicWindow(QMainWindow):
         self.top_refresh_btn.setToolTip("Musikordner vollständig scannen & synchronisieren (F5)")
         header.addWidget(self.top_refresh_btn)
 
+        self.top_details_btn = self._button("Song-Details", self._toggle_details_panel, icon=get_icon("info"), icon_size=QSize(16, 16))
+        self.top_details_btn.setToolTip("Song-Details ein-/ausblenden [I]")
+        header.addWidget(self.top_details_btn)
+
         # Global shortcuts
         self.f5_shortcut = QShortcut(QKeySequence("F5"), self)
         self.f5_shortcut.activated.connect(self.run_sync_library)
         self.i_shortcut = QShortcut(QKeySequence("I"), self)
         self.i_shortcut.activated.connect(self._toggle_details_panel)
         self.esc_shortcut = QShortcut(QKeySequence(Qt.Key_Escape), self)
-        self.esc_shortcut.activated.connect(lambda: self.details_panel.hide() if self.details_panel.isVisible() else None)
+        self.esc_shortcut.activated.connect(self._on_escape)
 
-        header.addWidget(self._button("Einstellungen", lambda: self.show_page(6), icon=get_icon("settings"), icon_size=QSize(16, 16)))
+        header.addWidget(self._button("Einstellungen", self._open_settings, icon=get_icon("settings"), icon_size=QSize(16, 16)))
         main_layout.addLayout(header)
 
         # 2. Main Area: Sidebar + Content Area + Collapsible Details Panel
@@ -1370,7 +1376,7 @@ class MusicWindow(QMainWindow):
         close_btn.setFixedSize(24, 24)
         close_btn.setObjectName("closeBtn")
         close_btn.setToolTip("Panel schließen (Esc)")
-        close_btn.clicked.connect(lambda: self.details_panel.hide())
+        close_btn.clicked.connect(self._close_details_panel)
         top_hdr_lay.addWidget(close_btn)
         main_layout.addWidget(top_hdr)
 
@@ -1558,15 +1564,21 @@ class MusicWindow(QMainWindow):
         if hasattr(self, "detail_stack") and self.detail_stack.currentIndex() == 1:
             self._load_recommendations_for_track(track)
 
+    def _close_details_panel(self):
+        if hasattr(self, "details_panel"):
+            self.details_panel.setVisible(False)
+
     def _toggle_details_panel(self):
+        if not hasattr(self, "details_panel"):
+            return
         if self.details_panel.isVisible():
-            self.details_panel.hide()
+            self._close_details_panel()
         else:
             target = getattr(self, "current_track", None) or getattr(self, "selected_detail_track", None)
             if target:
                 self.show_track_details(target, force_open=True)
             else:
-                self.details_panel.show()
+                self.details_panel.setVisible(True)
                 if hasattr(self, "details_scroll"):
                     self.details_scroll.verticalScrollBar().setValue(0)
 
@@ -1833,7 +1845,7 @@ class MusicWindow(QMainWindow):
 
         # Preview Table (clean: hide non-relevant columns before download)
         self.pre_model = TrackModel(selectable=True)
-        self.pre_table = self._create_styled_table(self.pre_model)
+        self.pre_table = self._create_styled_table(self.pre_model, "pre_download")
         self.pre_table.setColumnHidden(4, True)  # Album
         self.pre_table.setColumnHidden(5, True)  # Dauer
         self.pre_table.setColumnHidden(6, True)  # Jahr
@@ -2253,7 +2265,7 @@ class MusicWindow(QMainWindow):
 
         # Table View
         model = TrackModel(selectable=True)
-        table = self._create_styled_table(model)
+        table = self._create_styled_table(model, "favorites" if favorites else "library")
         table.setContextMenuPolicy(Qt.CustomContextMenu)
         table.customContextMenuRequested.connect(lambda p, t=table, m=model: self.context_menu(t, m, p))
         table.doubleClicked.connect(lambda idx, m=model: self.play(m.rows[idx.row()], idx.row(), m.rows) if 0 <= idx.row() < len(m.rows) else None)
@@ -2414,7 +2426,54 @@ class MusicWindow(QMainWindow):
 
         self.refresh_library()
 
-    def _create_styled_table(self, model: TrackModel) -> QTableView:
+    def _save_header_state(self, table_id: str, header: QHeaderView):
+        if getattr(self, "_restoring_headers", False):
+            return
+        try:
+            state_hex = bytes(header.saveState()).hex()
+            self.settings[f"header_state_{table_id}"] = state_hex
+            self.db.set_setting(f"header_state_{table_id}", state_hex)
+        except Exception:
+            pass
+
+    def _restore_header_state(self, table_id: str, header: QHeaderView):
+        state_hex = self.settings.get(f"header_state_{table_id}") or self.db.get_setting(f"header_state_{table_id}")
+        if state_hex:
+            try:
+                self._restoring_headers = True
+                ba = QByteArray.fromHex(state_hex.encode("ascii"))
+                header.restoreState(ba)
+            except Exception:
+                pass
+            finally:
+                self._restoring_headers = False
+
+    def _show_header_context_menu(self, pos, header: QHeaderView, model: TrackModel, table_id: str):
+        menu = QMenu(header)
+        for col in range(model.columnCount()):
+            col_name = model.headerData(col, Qt.Horizontal, Qt.DisplayRole)
+            if not col_name:
+                col_name = "Auswahl" if col == 0 else f"Spalte {col}"
+            action = QAction(col_name, menu)
+            action.setCheckable(True)
+            action.setChecked(not header.isSectionHidden(col))
+            if col == 2:
+                action.setEnabled(False)
+            action.toggled.connect(lambda checked, c=col: self._toggle_header_column(header, c, checked, table_id))
+            menu.addAction(action)
+        menu.exec(header.mapToGlobal(pos))
+
+    def _toggle_header_column(self, header: QHeaderView, col: int, checked: bool, table_id: str):
+        header.setSectionHidden(col, not checked)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        self._save_header_state(table_id, header)
+
+    def _on_header_section_resized(self, table_id: str, header: QHeaderView, logical_idx: int):
+        if getattr(self, "_restoring_headers", False) or logical_idx == 2:
+            return
+        self._save_header_state(table_id, header)
+
+    def _create_styled_table(self, model: TrackModel, table_id: str = "tracks") -> QTableView:
         table = QTableView()
         table.setModel(model)
         table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -2427,26 +2486,33 @@ class MusicWindow(QMainWindow):
         header.setSectionsClickable(True)
         header.sectionClicked.connect(lambda col: self._on_header_clicked(col, model, table))
 
-        # Checkbox & Cover
-        header.setSectionResizeMode(0, QHeaderView.Fixed)
-        table.setColumnWidth(0, 36)
-        header.setSectionResizeMode(1, QHeaderView.Fixed)
-        table.setColumnWidth(1, 56)
+        # Spaltenbreiten manuell per Maus verschiebbar
+        header.setSectionResizeMode(QHeaderView.Interactive)
 
-        # Proportional balanced width distribution
-        header.setSectionResizeMode(2, QHeaderView.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.Interactive)
+        # Standardbreiten initialisieren
+        table.setColumnWidth(0, 36)
+        table.setColumnWidth(1, 56)
         table.setColumnWidth(3, 170)
-        header.setSectionResizeMode(4, QHeaderView.Interactive)
         table.setColumnWidth(4, 150)
-        header.setSectionResizeMode(5, QHeaderView.Fixed)
         table.setColumnWidth(5, 65)
-        header.setSectionResizeMode(6, QHeaderView.Fixed)
         table.setColumnWidth(6, 55)
-        header.setSectionResizeMode(7, QHeaderView.Fixed)
         table.setColumnWidth(7, 70)
-        header.setSectionResizeMode(8, QHeaderView.Fixed)
         table.setColumnWidth(8, 80)
+
+        # Gespeicherten Zustand (Breiten & sichtbare Spalten) laden
+        self._restore_header_state(table_id, header)
+
+        # Nur "Titel" (col 2) soll Restplatz füllen
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+
+        # Kontextmenü auf Tabellenkopf (Spaltenauswahl)
+        header.setContextMenuPolicy(Qt.CustomContextMenu)
+        header.customContextMenuRequested.connect(
+            lambda pos, h=header, m=model, tid=table_id: self._show_header_context_menu(pos, h, m, tid)
+        )
+        header.sectionResized.connect(
+            lambda idx, old_s, new_s, tid=table_id, h=header: self._on_header_section_resized(tid, h, idx)
+        )
 
         table.setAcceptDrops(True)
         table.dragEnterEvent = self.dragEnterEvent
@@ -2654,7 +2720,7 @@ class MusicWindow(QMainWindow):
 
         # Track Table
         self.pl_track_model = TrackModel(selectable=True)
-        self.pl_table = self._create_styled_table(self.pl_track_model)
+        self.pl_table = self._create_styled_table(self.pl_track_model, "playlists")
         self.pl_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.pl_table.customContextMenuRequested.connect(lambda p: self.context_menu(self.pl_table, self.pl_track_model, p))
         self.pl_table.doubleClicked.connect(lambda idx: self.play(self.pl_track_model.rows[idx.row()], idx.row(), self.pl_track_model.rows))
@@ -2677,7 +2743,18 @@ class MusicWindow(QMainWindow):
         layout.setContentsMargins(28, 22, 28, 22)
         layout.setSpacing(14)
 
-        layout.addWidget(QLabel("<h2>Einstellungen</h2>"))
+        # Header with Title and Close Button
+        header_row = QHBoxLayout()
+        header_row.addWidget(QLabel("<h2>Einstellungen</h2>"))
+        header_row.addStretch()
+
+        close_btn_top = QPushButton("✕")
+        close_btn_top.setFixedSize(28, 28)
+        close_btn_top.setObjectName("closeBtn")
+        close_btn_top.setToolTip("Einstellungen schließen (Esc)")
+        close_btn_top.clicked.connect(self._close_settings)
+        header_row.addWidget(close_btn_top)
+        layout.addLayout(header_row)
 
         # Musikordner
         layout.addWidget(QLabel("Musikordner"))
@@ -2743,11 +2820,18 @@ class MusicWindow(QMainWindow):
 
         layout.addWidget(chk_group)
 
-        # Actions
+        # Actions: Speichern & Fertig / Schließen
         save_btn = self._button("Speichern", self.save_settings, True, icon=get_icon("check"))
-        save_btn.setMinimumWidth(160)
+        save_btn.setMinimumWidth(140)
+
+        done_btn = self._button("Fertig / Schließen", self._close_settings, icon=get_icon("check-circle"))
+        done_btn.setMinimumWidth(160)
+        done_btn.setToolTip("Einstellungen schließen und zur vorherigen Ansicht zurückkehren (Esc)")
+
         btn_row = QHBoxLayout()
+        btn_row.setSpacing(12)
         btn_row.addWidget(save_btn)
+        btn_row.addWidget(done_btn)
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
@@ -2766,6 +2850,27 @@ class MusicWindow(QMainWindow):
 
         scroll.setWidget(content)
         return scroll
+
+    def _open_settings(self):
+        curr = self.pages.currentIndex()
+        if curr != 6:
+            self._prev_page = curr
+        self.show_page(6)
+
+    def _close_settings(self):
+        dest = getattr(self, "_prev_page", 2)
+        if dest == 6 or dest is None:
+            dest = 2
+        self.show_page(dest)
+        if hasattr(self, "nav") and 0 <= dest < self.nav.count():
+            self.nav.setCurrentRow(dest)
+
+    def _on_escape(self):
+        if hasattr(self, "pages") and self.pages.currentIndex() == 6:
+            self._close_settings()
+            return
+        if hasattr(self, "details_panel") and self.details_panel.isVisible():
+            self._close_details_panel()
 
     def _player_bar(self) -> QWidget:
         bar = QFrame()

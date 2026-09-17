@@ -287,10 +287,16 @@ QHeaderView::section {
     color: #A0A6AD;
     border: none;
     border-bottom: 1px solid #262B34;
+    border-right: 1px solid #1C2026;
     padding: 6px 10px;
     min-height: 36px;
     font-weight: 600;
     font-size: 12px;
+}
+
+QHeaderView::section:hover {
+    background-color: #1F242C;
+    color: #F4F4F4;
 }
 
 /* =========================================================
