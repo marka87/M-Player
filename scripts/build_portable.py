@@ -36,23 +36,44 @@ PORTABLE_DIR = DIST_DIR / ("M-Player-Portable" if IS_WINDOWS else "M-Player-Linu
 
 
 def find_tool(tool_name: str) -> Path | None:
-    """Find a binary in PATH or common WinGet installation locations."""
-    # Check direct name first (or .exe on Windows)
+    """Find a binary in PATH, Chocolatey lib dirs, or WinGet installation locations (bypassing tiny shims)."""
     cand_names = [f"{tool_name}.exe", tool_name] if IS_WINDOWS else [tool_name]
-    for name in cand_names:
-        found = shutil.which(name)
-        if found and Path(found).is_file():
-            return Path(found)
 
+    # Special handling on Windows: avoid copying 383KB Chocolatey shims
     if IS_WINDOWS:
+        # Check direct chocolatey lib directory for real unpacked binaries
+        choco_lib = Path(os.environ.get("ChocolateyInstall", "C:/ProgramData/chocolatey")) / "lib"
+        if choco_lib.is_dir():
+            for cand in choco_lib.glob(f"**/{tool_name}.exe"):
+                if cand.is_file() and cand.stat().st_size > 1_000_000:
+                    return cand
+
+        # Check WinGet installation locations
         winget_root = Path.home() / "AppData" / "Local" / "Microsoft" / "WinGet" / "Packages"
         if winget_root.is_dir():
             for cand in winget_root.glob(f"**/{tool_name}.exe"):
-                if cand.is_file():
+                if cand.is_file() and cand.stat().st_size > 1_000_000:
                     return cand
-            for cand in winget_root.glob(f"**/{tool_name}"):
-                if cand.is_file():
-                    return cand
+
+    # Standard PATH check
+    for name in cand_names:
+        found = shutil.which(name)
+        if found and Path(found).is_file():
+            # If on Windows and points to a small Chocolatey shim (< 500KB), check .shim file next to it
+            found_path = Path(found)
+            if IS_WINDOWS and "chocolatey" in str(found_path).lower() and found_path.stat().st_size < 500_000:
+                shim_file = found_path.with_suffix(".shim")
+                if shim_file.is_file():
+                    try:
+                        for line in shim_file.read_text(encoding="utf-8").splitlines():
+                            if line.strip().lower().startswith("path ="):
+                                real_path = Path(line.split("=", 1)[1].strip().strip('"'))
+                                if real_path.is_file():
+                                    return real_path
+                    except Exception:
+                        pass
+            return found_path
+
     return None
 
 
